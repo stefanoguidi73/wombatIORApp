@@ -27,6 +27,61 @@ get_sessions_info_2 <- function(df) {
 
 # list available data files
 
+# Functions to plot proportions of time on various task (ignore time ordered nature of data) ----
+# main categories only
+plot_prop_time_on_tasks <- function(df, session_1_id, session_2_id) {
+  df %>%
+    filter(`session id` %in% c(session_1_id, session_2_id)) %>%
+    mutate(sess_duration = `session end`- `session start`) %>% 
+    group_by(`observer id`, Cosa) %>%
+    summarise(
+      tot_time_on_act = sum(`total time`),
+      session_duration = hms::as.hms(first(sess_duration)),
+      pro_time_on_act = as.numeric(tot_time_on_act) * 100 /
+        as.numeric(first(sess_duration)),
+      n_obsd_tasks = n()
+    ) %>%
+    group_by(`observer id`) %>%
+    mutate(tot_n_tasks = sum(n_obsd_tasks),
+           prop_task = n_obsd_tasks * 100 / tot_n_tasks) %>% 
+    ggplot( aes(x = Cosa, y = pro_time_on_act, alpha = factor(`observer id`), fill = Cosa)) +
+    geom_bar(stat = "identity", position = position_dodge()) + 
+    scale_alpha_manual(values = c(1,.75), guide = guide_legend(title = "Obs ID", reverse = TRUE)) +
+    geom_text(aes(label = paste(round(pro_time_on_act, digits = 1), "%", sep = " ")), position = position_dodge(.9), size = 3, hjust = -0.2) + 
+    scale_y_continuous(limits = c(0,55), breaks = seq(0,50, by = 10)) +
+    ylab("Percentuale del tempo sul task") +
+    xlab("Tipo di attività (categoria)" ) +
+    guides(fill = "none") + 
+    coord_flip()
+}
+
+# main categiories and subcategories
+plot_prop_time_on_tasks_sub <- function(df, session_1_id, session_2_id) {
+  df %>%
+    filter(`session id` %in% c(session_1_id, session_2_id)) %>%
+    mutate(sess_duration = `session end`- `session start`, sottocategoria = if_else(`Cosa (subcategories)`==0, Cosa, str_c(Cosa, `Cosa (subcategories)`, sep = ": "))) %>% 
+    group_by(`observer id`, Cosa, sottocategoria) %>%
+    summarise(
+      tot_time_on_act = sum(`total time`),
+      session_duration = hms::as.hms(first(sess_duration)),
+      pro_time_on_act = as.numeric(tot_time_on_act) * 100 /
+        as.numeric(first(sess_duration)),
+      n_obsd_tasks = n()
+    ) %>%
+    group_by(`observer id`) %>%
+    mutate(tot_n_tasks = sum(n_obsd_tasks),
+           prop_task = n_obsd_tasks * 100 / tot_n_tasks) %>% 
+    ggplot( aes(x = sottocategoria, y = pro_time_on_act, alpha = factor(`observer id`), fill = Cosa)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    scale_alpha_manual(values = c(1,.75), guide = guide_legend(title = "Obs ID", reverse = TRUE)) +
+    guides(fill = guide_legend(reverse = TRUE)) +
+    geom_text(aes(label = paste(round(pro_time_on_act, digits = 1), "%", sep = " ")), position = position_dodge(.9), size = 3, hjust = -0.2) +
+    scale_y_continuous(limits = c(0,55), breaks = seq(0,50, by = 10)) +
+    ylab("Percentuale del tempo sul task") +
+    xlab("Tipo di attività (categoria/sottocategoria)" ) +
+    coord_flip()
+}
+
 # auxiliary function append_rows_df() used inside create_long_time_windows() to create sequence of time windows ----
 append_rows_df <- function(df, df2, i, ultimo, primo, fragment){
   n_finestre <- ultimo - primo + 1
@@ -163,16 +218,17 @@ add_extra_info <- function(df) {
               task_end = last(wind_id), 
               track = first(track),
               task_duration = task_end - task_start) %>% 
-    mutate(interruzione = if_else(max(fragment) - fragment > 0, 1, 0),
-           midpoint = if_else(midpoint < start_sec, 
-                              (start_sec + task_end - 0.5)/2, 
-                              if_else(midpoint > end_sec, 
-                                      (task_start + end_sec)/2,
-                                      midpoint)))  %>% 
+    mutate(interruzione = if_else(max(fragment) - fragment > 0, 1, 0)) %>%  #,
+           # midpoint = if_else(midpoint < start_sec, 
+           #                    (start_sec + task_end - 0.5)/2, 
+           #                    if_else(midpoint > end_sec, 
+           #                            (task_start + end_sec)/2,
+           #                            midpoint)))  %>% 
     separate(task_id, sep = "_", remove = FALSE, into = c("obs","sess", "task_id_label")) %>%
     select(-obs, -sess)
 } 
 
+# lookup table for task colors (i should join it to the various dfs to add the color columns)
 prepare_palette <- function(df_long){
   livelli <- levels(df_long$task)
   colori <- hue_pal()(length(livelli))
@@ -185,11 +241,14 @@ prepare_palette <- function(df_long){
 # function to prepare all data for IRR ----
 prepare_data <- function(df_raw, sess_1id, sess_2id){
   long <- create_long_time_windows(df_raw, sess_1id, sess_2id)
-  wide <- long %>% flat_tasks_df()
-  long <- add_track_n(long, wide)
-  long_aggregated <- add_subcats_info(add_extra_info(long), df_raw)
-  matched_pairs <- match_pairs(long_aggregated)
-  task_table <- prepare_palette(long)
+  wide <- long %>% flat_tasks_df() # used for proportion kappa
+  long <- add_track_n(long, wide) # used for static plot
+  long_aggregated <- add_subcats_info(add_extra_info(long), df_raw) # used for interactive plot
+  matched_pairs <- match_pairs(long_aggregated) # used for naming kappa and D-CCC
+  task_table <- prepare_palette(long) # used for colors in plots/tables
+  long <- long %>% left_join(task_table)
+  long_aggregated <- long_aggregated %>% left_join(task_table %>% rename(Cosa = task))
+  matched_pairs <- matched_pairs %>% left_join(task_table %>% rename(Cosa = task))
   out <- list(long = long, 
               wide = wide, 
               long_aggregated = long_aggregated, 
@@ -215,20 +274,40 @@ concordanza_2_task <- function(df_flat, task_n){
   # percent agreement table
   livelli <- sort(union(unique(task_obs1), unique(task_obs2)))
   #livelli <- str_trim(livelli)
-  print(livelli)
+  # print(livelli)
   a <- factor(task_obs1, levels = livelli)
   b <- factor(task_obs2, levels = livelli)
   contingenze_task <- table(a, b)
   perc_agreement <- sum(apply((contingenze_task * diag(nrow = length(livelli))), 1, "sum"))*100/sum(apply(contingenze_task, 1, "sum"))
-  cat("\nAgreement on task ", task_n, ": ", round(perc_agreement, digits = 1), "%\n", sep = "")
-  print(kappa_t1)
-  print(contingenze_task)
+  # cat("\nAgreement on task ", task_n, ": ", round(perc_agreement, digits = 1), "%\n", sep = "")
+  # print(kappa_t1)
+  # print(contingenze_task)
+  detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
   #return(kappa_t1)
   out <- list(agreement = perc_agreement, 
               stats = kappa_t1$value,
+              detail = detail,
               contigency_table = contingenze_task)
   return(out)
-  # store kappa_t1$value kappa_t1$details
+}
+
+# multivariate agreement (Janson, H., & Olsson, U. 2001) ----
+concordanza_multi <- function(df_flat){
+  # prepare dataset (must be a list)
+  max_n_tasks <- max(df_flat$n_tasks)
+  osservatori <- unique(df_flat$obs_id)
+  multi_df <- vector("list", max_n_tasks)
+  for (tasks in (1:max_n_tasks)){
+    colonna <- 4 + tasks
+    task_obs1 <- str_trim(df_flat[df_flat$obs_id == osservatori[1], colonna])
+    task_obs2 <- str_trim(df_flat[df_flat$obs_id == osservatori[2], colonna])
+    task_obs1 <- ifelse(is.na(task_obs1), " NONE", task_obs1)
+    task_obs2 <- ifelse(is.na(task_obs2), " NONE", task_obs2)
+    multi_df[[tasks]] <- cbind(task_obs1, task_obs2)
+  }
+  # compute iota
+  kappa_multi <- iota(multi_df, scaledata = "nominal")
+  return(kappa_multi)
 }
 
 # task matching for Naming Kappa ----
@@ -296,7 +375,7 @@ match_pairs <- function(df) {
   
 }
 
-# calcolo naming Kappa
+# calcolo naming Kappa ----
 concordanza_naming <- function(matched_tasks){
   t1_obs1 <- matched_tasks$Cosa
   t1_obs2 <- matched_tasks$most_overlapping_task
@@ -306,10 +385,12 @@ concordanza_naming <- function(matched_tasks){
   b <- factor(t1_obs2, levels = livelli)
   contingenze_task <- table(a, b)
   perc_agreement <- sum(apply((contingenze_task * diag(nrow = length(livelli))), 1, "sum"))*100/sum(apply(contingenze_task, 1, "sum"))
-  cat("\nAgreement on matched task: ", round(perc_agreement, digits = 1), "%\n\n")
-  print(kappa_t1)
+  # cat("\nAgreement on matched tasks: ", round(perc_agreement, digits = 1), "%\n\n")
+  # print(kappa_t1)
+  detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
   out <- list(agreement = perc_agreement, 
               stats = kappa_t1$value,
+              detail = detail,
               contigency_table = contingenze_task)
   return(out)
 }
@@ -328,27 +409,147 @@ D_CCC <- function(matched_tasks){
 }
 
 # plot scatter of matched durations ----
-plot_D_CCC <- function(matched_tasks){
+plot_D_CCC <- function(matched_tasks, task_color_table){
   # drop pairs for D-CCC
+  obs1_id <- matched_tasks %>% 
+    separate(task_id, sep = "_", remove = FALSE, into = c("obs","sess", "task_id_label")) %>%
+    select(obs) %>% 
+    distinct() %>% 
+    as.numeric()
+  obs2_id <- matched_tasks %>% 
+    separate(most_overlapping_id, sep = "_", remove = FALSE, into = c("obs","sess", "task_id_label")) %>%
+    select(obs) %>% 
+    distinct() %>% 
+    as.numeric()
   t1_obs1 <- matched_tasks$Cosa
   t1_obs2 <- matched_tasks$most_overlapping_task
   agreed_task <- if_else(t1_obs1 == t1_obs2, TRUE, FALSE)
   matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, most_overlapping_id, .keep_all = TRUE)
-  ggplot(matched_tasks, aes(x = task_duration, y = most_overlapping_duration, colour = Cosa)) +
+  ggplot(matched_tasks, aes(x = task_duration, y = most_overlapping_duration, colour = color)) +
     geom_point(size = 3) +
-    xlab("Observer 1 (task duration in seconds)") +
-    ylab("Observer 2 (task duration in seconds)") +
-    geom_abline(intercept = 0, slope = 1, colour = "red") +
-    theme(legend = element_blank())
+    scale_colour_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
+                        guide = "legend") +
+    xlab(str_c("Observer", obs1_id,  "(task duration in seconds)", sep = " ")) +
+    ylab(str_c("Observer", obs2_id,  "(task duration in seconds)", sep = " ")) +
+    geom_abline(intercept = 0, slope = 1, colour = "red") + theme(legend.position='none') # +
+    #theme(legend = element_blank())
 }
-
+#View(matched_tasks)
+# matched_tasks %>% separate(task_id, sep = "_", remove = FALSE, into = c("obs","sess", "task_id_label")) %>%
+#   select(obs) %>% distinct()
+# plot_D_CCC(matched_tasks %>% left_join(colori %>% rename(Cosa = task)), 
+#            colori)
 
 # matched_tasks %>% 
 #   mutate(delta_start = task_start - most_overlapping_start) %>% 
 #   group_by(Cosa) %>% 
 #   summarise(median_delay = median(delta_start))
 #
+
+# plot function based on geom_rect ----
+plot_sequences_rect_ok <- function(df, task_color_table, axis_unit = "min", show.labels = TRUE) {
+  start_sec <- min(df$task_start)
+  end_sec <- max(df$task_end)
+  max_n_active_tasks <- max(df$track)
+  
+  if (axis_unit == "min"){
+    titolo <- "Time (minutes in the session)"
+    tacche <- seq(start_sec, end_sec, by = 60)
+    etichette <- str_c(tacche/60, "'", sep = "")
+  } else {
+    titolo <- "Time (seconds in the session)"
+    tacche <- seq(start_sec, end_sec, by = 10)
+    etichette <- tacche
+  }
+  
+  # ploting code
+  sequence_plot <- ggplot(df, aes(xmin = task_start, xmax = task_end + 1, ymin = track - 0.5 , ymax = track + 0.5)) +
+    geom_rect(aes(fill = color), colour = "grey50") + #, lineend = "square"
+    xlab(titolo) +
+    ylab("") +
+    scale_fill_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
+                        guide = "legend") +
+    scale_x_continuous(
+      breaks = tacche,
+      label = etichette,
+      minor_breaks = seq(start_sec, end_sec, by = 10),
+      limits = c(start_sec, end_sec + 1)
+    ) +
+    scale_y_continuous( # control using max(track)
+      breaks = 1:max_n_active_tasks,
+      label = paste("Task", 1:max_n_active_tasks, sep = " "),
+      minor_breaks = NULL,
+      limits = c(0.5, max_n_active_tasks + 0.5)
+    ) +
+    geom_segment(aes(x = task_end + 1, xend = task_end + 1, y = (track - 0.5), yend = track + 0.5, linetype =  factor(interruzione)), data = df, inherit.aes = FALSE, show.legend = FALSE, colour = "black") +
+    facet_wrap(~ obs_id, ncol = 1) 
+  if (show.labels){
+    sequence_plot <- sequence_plot +
+      geom_text(aes(x = midpoint, y = track, label = task_id), size = 2, angle = 90, colour = "black")
+  }
+  sequence_plot
+} 
+
+format_details_table <- function(table){
+  tags$table(class = "table",
+             tags$thead(tags$tr(
+               tags$th(""),
+               tags$th("Activity"),
+               tags$th("K")
+             )),
+             tags$tbody(apply(table, 
+                              1, 
+                              function(x) tags$tr(eval(parse(text = paste0('list(',paste0(c(paste0('tags$td(span(style="width:1.1em; height:1.1em; display:inline-block; background-color:', x[3],';"))'), paste0('tags$td("', x[1:2],'")')),collapse=","),')')))))
+             ))
+}
+
+
 # tests -----
+# aggregati_prova <- add_extra_info(dati_to_plot_compare_new_long_final) %>%
+#   add_subcats_info(., dati_prova_irr_2) %>%
+#   left_join(colori %>% rename(Cosa = task))
+# View(aggregati_prova)
+# plot_sequences_rect_ok(aggregati_prova)
+# 
+# osser <- unique(aggregati_prova$obs_id)
+# set1 <- which(aggregati_prova$obs_id == 4 & aggregati_prova$interruzione == 0)
+# set2 <- which(aggregati_prova$obs_id == 32 & aggregati_prova$interruzione == 0)
+# set3 <- which(aggregati_prova$obs_id == 4 & aggregati_prova$interruzione == 1)
+# set4 <- which(aggregati_prova$obs_id == 32 & aggregati_prova$interruzione == 1)
+# aggregati_prova[set1,]
+# min(aggregati_prova$task_start)
+# max(aggregati_prova$task_end)
+# 
+# seq(min(aggregati_prova$task_start), max(aggregati_prova$task_end), by = 60)
+# 
+# plot_da_convertire_2 <- plot_sequences_rect_ok(aggregati_prova, colori, show.labels = FALSE)
+# interactive_plot <- ggplotly(plot_da_convertire_2 + theme(legend.position='none'))
+# interactive_plot <- plotly_build(plot_da_convertire_2 + theme(legend.position='none'))
+# labels_plot <- str_c(aggregati_prova$Cosa,
+#       ifelse(aggregati_prova$`Cosa (subcategories)` != "0", aggregati_prova$task_details, ""),
+#       ifelse(aggregati_prova$Dove != "0", aggregati_prova$Dove, ""), sep = "\n")
+# style(interactive_plot, text=labels_plot, hoverinfo = "text", hoveron = "points", traces = 15:18)
+# plotly_json(step1)
+# plotly_json(step2)
+# step1 <- style(interactive_plot, hoverinfo = "none", traces = 1:14)
+# step2 <- style(step1, text=rep(labels_plot[set1], each = 3), hoverinfo = "text", traces = 15)
+# step3 <- style(step2, text=rep(labels_plot[set2], each = 3), hoverinfo = "text", traces = 16)
+# step4 <- style(step3, text=rep(labels_plot[set3], each = 3), hoverinfo = "text", traces = 17)
+# step5 <- style(step4, text=rep(labels_plot[set4], each = 3), hoverinfo = "text", traces = 18)
+# plotly_json(step5)
+# step2 <- style(step1, text=labels_plot, hoverinfo = "text", traces = 15:18)
+# step3 <- style(step2, text=labels_plot, hoverinfo = "fills", traces = 1:14)
+# step4 <- style(step3, text=labels_plot, hoverinfo = "text", traces = 1:14)
+
+# aggregati_prova_2 <- add_extra_info(dati_to_plot_compare_new_long_fm_final) %>%
+#   add_subcats_info(., dati_prova_irr_2) %>% 
+#   left_join(colori_2 %>% rename(Cosa = task)) 
+# colori_2 <- prepare_palette(dati_to_plot_compare_new_long_fm_final)
+# plot_da_convertire_3 <- plot_sequences_rect_ok(aggregati_prova_2, colori_2, show.labels = FALSE)
+# interactive_plot_fm <- ggplotly(plot_da_convertire_3 + theme(legend.position='none'))
+# plotly_json(interactive_plot_fm)
+# str(interactive_plot_fm$x$data)
+# length(interactive_plot_fm$x$data)
 # dati_to_plot_compare_new_long <- create_long_time_windows(dati_prova_irr_2, 54, 60) %>% flat_tasks_df() # Giulio e Ste
 # dati_to_plot_compare_new_long_final <- add_track_n(dati_to_plot_compare_new_long, dati_to_plot_compare_new_flat) 
 # dati_to_plot_compare_new_long_fm_final <- add_track_n_2(dati_to_plot_compare_new_long_fm) # slower,

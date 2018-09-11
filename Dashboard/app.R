@@ -1,12 +1,15 @@
 library(shinydashboard)
 library(shiny)
 library(shinycssloaders)
+#library(shinyjs)
 
+# load the functions from external file
 source("helpers.R")
 
-# Define UI for application ----
+# Define UI element for application ----
+# sidebar ----
 sidebar <- dashboardSidebar(
-  # sidebar ----
+  #useShinyjs(),
   sidebarMenu(
     id = "sidebarmenu",
     menuItem("Data files", tabName = "datafiles"),
@@ -44,7 +47,7 @@ sidebar <- dashboardSidebar(
   )
 )
 
-
+# body ----
 body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                       
                       # first page (datafiles) ----
@@ -72,16 +75,16 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                           fluidRow(
                             column( # first column
                               width = 4,
-                              withSpinner(valueBoxOutput("k1", width= NULL)), # FleissK1
+                              withSpinner(valueBoxOutput("k1", width= NULL), proxy.height = "100px"), # FleissK1
                               valueBoxOutput("agr1", width= NULL),
                               box(
                                 title = "Details (task 1)",
                                 width = NULL,
                                 solidHeader = TRUE,
                                 collapsible = TRUE,
-                                collapsed = TRUE,
+                                collapsed = FALSE,
                                 status = "primary",
-                                plotOutput("numVehiclesTable1")
+                                tableOutput("kappa1Details")
                               ),
                               valueBoxOutput("k2", width= NULL), # FleissK1
                               valueBoxOutput("agr2", width= NULL),
@@ -92,35 +95,35 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                                 collapsible = TRUE,
                                 collapsed = TRUE,
                                 status = "primary",
-                                plotOutput("numVehiclesTable2")
+                                tableOutput("kappa2Details")
                               ),
-                              valueBox(width= NULL, "0.73", subtitle = "Multivariate IOTA", color = "light-blue")
+                              valueBoxOutput("iota", width= NULL)
                               ),
                             column( # second column
                               width = 4,
-                              valueBoxOutput("nK", width= NULL), # FleissK on naming
+                              withSpinner(valueBoxOutput("nK", width= NULL), proxy.height = "100px"), # FleissK on naming
                               valueBoxOutput("agrK", width= NULL),
                               box(
                                 title = "Naming agreement",
                                 width = NULL,
                                 solidHeader = TRUE,
                                 collapsible = TRUE,
-                                collapsed = TRUE,
+                                collapsed = FALSE,
                                 status = "success",
-                                plotOutput("numVehiclesTable3")
+                                tableOutput("namingDetails")
                               )),
                             column( # third column
                               width = 4,
-                              valueBoxOutput("DCCC", width= NULL), # DCCC
+                              withSpinner(valueBoxOutput("DCCC", width= NULL), proxy.height = "100px"), # DCCC
                               valueBoxOutput("offset", width= NULL),
                               box(
                                 title = "Duration",
                                 width = NULL,
                                 solidHeader = TRUE,
                                 collapsible = TRUE,
-                                collapsed = TRUE,
+                                collapsed = FALSE,
                                 status = "warning",
-                                plotOutput("numVehiclesTable4")
+                                plotOutput("durationsPlot")
                               ),
                               box(
                                 title = "Timing (matched tasks)",
@@ -135,7 +138,7 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                           # third row: iteractive plot
                           fluidRow(
                             box(width = NULL,
-                                plotOutput("interactivePlot")))
+                                withSpinner(plotlyOutput("interactivePlot", width = "98%"))))
                           # end third row
                         )), 
                         # second IRR tab (static plot of 2 sessions)
@@ -148,8 +151,22 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                         # fourthpage (plot of proportions) ----
                         tabItem(
                           tabName = "plotsProp",
-                          h2("Plots titles"),
-                          "Two plots"
+                          fluidRow(
+                            box(
+                              title = "Proportion of time on different tasks",
+                              width = 6,
+                              solidHeader = TRUE,
+                              plotOutput("propPlot")
+                            ),
+                            box(
+                              title = "Proportion of time on different tasks",
+                              width = 6,
+                              solidHeader = TRUE,
+                              plotOutput("propPlotSub")
+                            )
+                          )
+                          # h2("Plots titles"),
+                          # "Two plots"
                         ),
                         tabItem(
                           tabName = "trackProgress",
@@ -159,8 +176,10 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                       ) # end tabsets
 ) # end body
 
+# put ui elements together -----
 ui <- dashboardPage(
-  dashboardHeader(title = "WOMBAT Sessions IRR Assessment"),
+  dashboardHeader(title = "WOMBAT Sessions IORA",
+                  titleWidth = 300),
   sidebar,
   body
 )
@@ -195,6 +214,7 @@ server <- function(input, output, session) { #
   
   observeEvent(input$compare, {
     updateTabItems(session, "sidebarmenu", selected = "irr") # change page
+    #shinyjs::hide(selector = "ul.menu-open");
   })
   
   # load sessions
@@ -210,12 +230,8 @@ server <- function(input, output, session) { #
   })
   
   output$files <- renderDataTable({
-    data_frame(
-      id = 1:length(list.files(
-        path = "../data", full.names = FALSE
-      )),
-      filename = list.files(path = "../data", full.names = FALSE)
-    ) #DT::datatable(
+    file.info(list.files(path = "data/", full.names = TRUE)) %>% select(size, mtime:atime, uname) %>% rownames_to_column(., var = "Filename")
+    # ) #DT::datatable(
   })
   output$sessions <- renderDataTable({
     get_sessions_info_2(data())
@@ -232,6 +248,9 @@ server <- function(input, output, session) { #
   output$agr2 <- renderValueBox({
     valueBox(paste0(round(concordanza_2_task(prepared_data()$wide, 2)$agreement, digits = 1), "%"), width= NULL, subtitle = "% Agreement on second task", color = "light-blue") 
   })
+  output$iota <- renderValueBox({
+    valueBox(round(concordanza_multi(prepared_data()$wide)$value, digits = 2), width= NULL, subtitle = "Multivariate IOTA", color = "light-blue")
+  })
   output$nK <- renderValueBox({
     valueBox(round(concordanza_naming(prepared_data()$matched_pairs)$stats, digits = 2), width= NULL, subtitle = "K on naming (matched tasks)", color = "green")
   })
@@ -244,10 +263,61 @@ server <- function(input, output, session) { #
   output$offset <- renderValueBox({
     valueBox(round(D_CCC(prepared_data()$matched_pairs)$C.b, digits = 2), width= NULL, subtitle = "Offset", color = "yellow")
   })
-  # output$interactivePlot <- renderPlotly({
-  #   static_plot <- plot_sequences_rect(dati_to_plot_compare_new_long_fm_final, 0, 1800) + theme(legend.position='none')
-  #   ggplotly(static_plot, tooltip = c("task", "task_start","task_id")) 
-  # })
+  output$durationsPlot <- renderPlot({
+    plot_D_CCC(prepared_data()$matched_pairs, 
+               prepared_data()$tasks)
+  })
+  output$interactivePlot <- renderPlotly({
+    labels_plot <- str_c(prepared_data()$long_aggregated$Cosa,
+                         ifelse(prepared_data()$long_aggregated$`Cosa (subcategories)` != "0", 
+                                prepared_data()$long_aggregated$task_details, ""),
+                         ifelse(prepared_data()$long_aggregated$Dove != "0", 
+                                prepared_data()$long_aggregated$Dove, ""), sep = "\n")
+    observers <- unique(prepared_data()$long_aggregated$obs_id)
+    set1 <- which(prepared_data()$long_aggregated$obs_id == observers[1] & prepared_data()$long_aggregated$interruzione == 0)
+    set2 <- which(prepared_data()$long_aggregated$obs_id == observers[2] & prepared_data()$long_aggregated$interruzione == 0)
+    set3 <- which(prepared_data()$long_aggregated$obs_id == observers[1] & prepared_data()$long_aggregated$interruzione == 1)
+    set4 <- which(prepared_data()$long_aggregated$obs_id == observers[2] & prepared_data()$long_aggregated$interruzione == 1)
+    
+    
+    static_plot <- plot_sequences_rect_ok(prepared_data()$long_aggregated, 
+                                          prepared_data()$tasks, 
+                                          show.labels = FALSE)  + theme(legend.position='none')
+    interactive_plot <- ggplotly(static_plot)
+    n_tracce <- length(interactive_plot$x$data)
+    step1 <- style(interactive_plot, hoverinfo = "none", traces = 1:(n_tracce - 4))
+    # step2 <- style(step1, text=labels_plot, hoverinfo = "text", traces = 15:18)
+    # step2
+    step2 <- style(step1, text=rep(labels_plot[set1], each = 3), hoverinfo = "text", traces = n_tracce - 3) # 
+    step3 <- style(step2, text=rep(labels_plot[set2], each = 3), hoverinfo = "text", traces = n_tracce - 2)
+    step4 <- style(step3, text=rep(labels_plot[set3], each = 3), hoverinfo = "text", traces = n_tracce - 1)
+    step5 <- style(step4, text=rep(labels_plot[set4], each = 3), hoverinfo = "text", traces = n_tracce)
+    step5
+  })
+  # proportion kappa for task 1 details
+  output$kappa1Details <- renderUI({
+    kappa_detail <- concordanza_2_task(prepared_data()$wide, 1)$detail
+    kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
+    format_details_table(kappa_detail)
+  }) 
+  # proportion kappa for task 2 details
+  output$kappa2Details <- renderUI({
+    kappa_detail <- concordanza_2_task(prepared_data()$wide, 2)$detail
+    kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
+    format_details_table(kappa_detail)
+  }) 
+  # naming kappa details table
+  output$namingDetails <- renderUI({
+    kappa_detail <- concordanza_naming(prepared_data()$matched_pairs)$detail
+    kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
+    format_details_table(kappa_detail)
+  }) 
+  output$propPlot <- renderPlot({
+    plot_prop_time_on_tasks(data(), input$session1, input$session2)
+  })
+  output$propPlotSub <- renderPlot({
+    plot_prop_time_on_tasks_sub(data(), input$session1, input$session2)
+  })
 }
 
 
