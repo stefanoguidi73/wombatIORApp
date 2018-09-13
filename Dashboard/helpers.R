@@ -7,6 +7,11 @@ library(htmlTable)
 library(listviewer) # to debug plotly
 library(DescTools)
 library(scales)
+library(NameNeedle)
+
+# set parameters for sequence similarity matrix/score computation (NW algorithm)
+defaultNeedleParams$MATCH <- 3
+defaultNeedleParams$MISMATCH <- 0
 
 # Define functions used by the app ----
 get_sessions_info_2 <- function(df) {
@@ -311,7 +316,7 @@ concordanza_multi <- function(df_flat){
 }
 
 # task matching for Naming Kappa ----
-# df is long format
+# df is long format aggregated
 match_pairs <- function(df) {
   obs_ids <- unique(df$obs_id)
   # determine reference
@@ -401,7 +406,8 @@ D_CCC <- function(matched_tasks){
   t1_obs1 <- matched_tasks$Cosa
   t1_obs2 <- matched_tasks$most_overlapping_task
   agreed_task <- if_else(t1_obs1 == t1_obs2, TRUE, FALSE)
-  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, most_overlapping_id, .keep_all = TRUE)
+  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, most_overlapping_id, .keep_all = TRUE) %>% 
+    distinct(most_overlapping_id, .keep_all = TRUE)
   DCCC <- CCC(matched_tasks$task_duration, matched_tasks$most_overlapping_duration, 
                      ci = "z-transform",
                      conf.level = 0.95)
@@ -424,7 +430,8 @@ plot_D_CCC <- function(matched_tasks, task_color_table){
   t1_obs1 <- matched_tasks$Cosa
   t1_obs2 <- matched_tasks$most_overlapping_task
   agreed_task <- if_else(t1_obs1 == t1_obs2, TRUE, FALSE)
-  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, most_overlapping_id, .keep_all = TRUE)
+  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, most_overlapping_id, .keep_all = TRUE) %>% 
+    distinct(most_overlapping_id, .keep_all = TRUE)
   ggplot(matched_tasks, aes(x = task_duration, y = most_overlapping_duration, colour = color)) +
     geom_point(size = 3) +
     scale_colour_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
@@ -440,6 +447,28 @@ plot_D_CCC <- function(matched_tasks, task_color_table){
 # plot_D_CCC(matched_tasks %>% left_join(colori %>% rename(Cosa = task)), 
 #            colori)
 
+plot_timing <- function(matched_tasks, task_color_table){
+  # drop pairs for D-CCC
+  t1_obs1 <- matched_tasks$Cosa
+  t1_obs2 <- matched_tasks$most_overlapping_task
+  agreed_task <- if_else(t1_obs1 == t1_obs2, TRUE, FALSE)
+  matched_tasks <- matched_tasks[agreed_task, ] %>% 
+    distinct(task_id, most_overlapping_id, .keep_all = TRUE) %>% 
+    distinct(most_overlapping_id, .keep_all = TRUE) %>% 
+    mutate(delta_start = task_start - most_overlapping_start) # %>% print()
+  matched_tasks %>% 
+    ggplot(aes(y = delta_start, x = Cosa, fill = color)) +
+    geom_boxplot() + 
+    geom_jitter() + 
+    scale_fill_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
+                          guide = "legend") +
+    xlab("") +
+    ylab("offset (paired tasks start time)") + 
+    #scale_x_discrete(limits = task_color_table$color) +
+    # ggtitle(subtitle = "Distribution of the difference between the start time recorded by the two observers for paired tasks. Positive value represent tasks that the first observer ...") + 
+    theme(legend.position = "none") + #, axis.text.y = element_blank()
+    coord_flip()
+}
 # matched_tasks %>% 
 #   mutate(delta_start = task_start - most_overlapping_start) %>% 
 #   group_by(Cosa) %>% 
@@ -501,6 +530,60 @@ format_details_table <- function(table){
                               1, 
                               function(x) tags$tr(eval(parse(text = paste0('list(',paste0(c(paste0('tags$td(span(style="width:1.1em; height:1.1em; display:inline-block; background-color:', x[3],';"))'), paste0('tags$td("', x[1:2],'")')),collapse=","),')')))))
              ))
+}
+
+
+
+# Sequence Needleman-wunsch computation ----
+SNW <- function(df, task_table) {
+  # df is in long aggregated form
+  n_tipi_task <- nrow(task_table) - 1
+  task_table <- task_table %>% slice(-1) %>% bind_cols(string = letters[1:n_tipi_task])
+  osservatori <- unique(df$obs_id) 
+  df <- df %>% left_join(task_table %>% select(-color) %>% rename(Cosa = task))
+  task_obs1 <- str_trim(df[df$obs_id == osservatori[1], ]$string)
+  task_obs2 <- str_trim(df[df$obs_id == osservatori[2], ]$string)
+  seq_obs1 <- str_c(task_obs1, collapse = "")
+  seq_obs2 <- str_c(task_obs2, collapse = "")
+  # print(defaultNeedleParams)
+  results <- needles(seq_obs1, seq_obs2, params=defaultNeedleParams)
+  seq1_vec <- strsplit(as.character(results$align1), split = "")
+  seq2_vec <- strsplit(as.character(results$align2), split = "")
+  seq_all_vec <- c(seq1_vec[[1]], seq2_vec[[1]])
+  # print(seq_all_vec)
+  obs <- c(rep(osservatori[1], times = length(seq1_vec[[1]])), rep(osservatori[2], times = length(seq2_vec[[1]])))
+  y = rep(1:length(seq1_vec[[1]]), times = 2)
+  sequences <- bind_cols(obs_id = obs, y = y, string = seq_all_vec) %>% left_join(task_table)
+  # normalize score to 0-1 range
+  t_max <- 3*length(seq1_vec[[1]])
+  t_min <- -1*sum(is.na(sequences$task))
+  n_score <- (results$score - t_min)/(t_max - t_min)
+  out <- list(score = n_score,
+              sequences = sequences)
+  return(out) # servono $score $align1 $align2
+}
+
+# plot function for aligned sequences ----
+plot_aligned_sequences <- function(df_long_aggr, task_color_table) {
+  df_long_aggr <- df_long_aggr %>% mutate(obs_id = as.factor(obs_id))
+  observers_ids <- levels(df_long_aggr$obs_id)
+  df_long_aggr%>% 
+    ggplot(aes(x = y, y = as.numeric(obs_id), fill = color)) + 
+    geom_tile(colour = "grey") +
+    scale_fill_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
+                        guide = "legend") +
+    scale_x_reverse() + 
+    #theme_void() +
+    ylab("") + 
+    xlab("") + 
+    scale_y_continuous(breaks = c(1, 2), labels = str_c("obs.", observers_ids, sep = " "), sec.axis = dup_axis()) +
+    theme(axis.text.x = element_text(face = "bold"), 
+          panel.background = element_rect(fill = "white", colour = NA),
+          panel.border = element_rect(colour = NA, fill = NA),
+          axis.text.y = element_blank(),
+          legend.position = "bottom",
+          axis.ticks = element_blank()) +
+    coord_flip()
 }
 
 

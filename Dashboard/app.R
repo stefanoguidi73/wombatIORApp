@@ -111,6 +111,17 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                                 collapsed = FALSE,
                                 status = "success",
                                 tableOutput("namingDetails")
+                              ),
+                              valueBoxOutput("seqNW", width= NULL),
+                              box(
+                                title = "Best aligned sequences",
+                                width = NULL,
+                                #height = 630,
+                                solidHeader = TRUE,
+                                collapsible = TRUE,
+                                collapsed = TRUE,
+                                status = "info",
+                                plotOutput("alignedSequences", height = "600px")
                               )),
                             column( # third column
                               width = 4,
@@ -132,7 +143,7 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                                 collapsible = TRUE,
                                 collapsed = TRUE,
                                 status = "warning",
-                                plotOutput("numVehiclesTable5")
+                                plotOutput("timingPlot")
                               ))
                           ), # end second row
                           # third row: iteractive plot
@@ -236,6 +247,7 @@ server <- function(input, output, session) { #
   output$sessions <- renderDataTable({
     get_sessions_info_2(data())
   })
+  # compute and display IORA measures
   output$k1 <- renderValueBox({
     valueBox(round(concordanza_2_task(prepared_data()$wide, 1)$stats, digits = 2), width= NULL, subtitle = "K on task (1s windows)", color = "light-blue") 
   })
@@ -267,6 +279,10 @@ server <- function(input, output, session) { #
     plot_D_CCC(prepared_data()$matched_pairs, 
                prepared_data()$tasks)
   })
+  output$timingPlot <- renderPlot({
+    plot_timing(prepared_data()$matched_pairs, 
+                prepared_data()$tasks)
+  })
   output$interactivePlot <- renderPlotly({
     labels_plot <- str_c(prepared_data()$long_aggregated$Cosa,
                          ifelse(prepared_data()$long_aggregated$`Cosa (subcategories)` != "0", 
@@ -284,6 +300,7 @@ server <- function(input, output, session) { #
                                           prepared_data()$tasks, 
                                           show.labels = FALSE)  + theme(legend.position='none')
     interactive_plot <- ggplotly(static_plot)
+    # stype ggplotly object to add hover info about tasks/subtasks and locations
     n_tracce <- length(interactive_plot$x$data)
     step1 <- style(interactive_plot, hoverinfo = "none", traces = 1:(n_tracce - 4))
     # step2 <- style(step1, text=labels_plot, hoverinfo = "text", traces = 15:18)
@@ -312,6 +329,16 @@ server <- function(input, output, session) { #
     kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
     format_details_table(kappa_detail)
   }) 
+  # sequence similarity
+  output$seqNW <- renderValueBox({
+    valueBox(round(SNW(prepared_data()$long_aggregated, prepared_data()$tasks)$score, digits = 2), width= NULL, subtitle = "N-W sequence similarity score", color = "aqua")
+  })
+  # plot best aligned sequences
+  output$alignedSequences <- renderPlot({
+    plot_aligned_sequences(SNW(prepared_data()$long_aggregated, prepared_data()$tasks)$sequences, prepared_data()$tasks)
+  },
+  height = 600)
+  # raw proportions plots
   output$propPlot <- renderPlot({
     plot_prop_time_on_tasks(data(), input$session1, input$session2)
   })
