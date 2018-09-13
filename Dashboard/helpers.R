@@ -319,7 +319,7 @@ concordanza_multi <- function(df_flat){
 # df is long format aggregated
 match_pairs <- function(df) {
   obs_ids <- unique(df$obs_id)
-  # determine reference
+  # determine reference (defined as the longest sequence)
   n1 <- nrow(df %>% filter(obs_id == obs_ids[1]))
   n2 <- nrow(df %>% filter(obs_id == obs_ids[2]))
   if (n1 >= n2) {
@@ -359,6 +359,8 @@ match_pairs <- function(df) {
                                                 duration = comparison[j, ]$task_duration,
                                                 overlap = overlap,
                                                 start = comparison[j, ]$task_start,
+                                                fragment = comparison[j, ]$fragment,
+                                                track = comparison[j, ]$track,
                                                 task = comparison[j, ]$Cosa,
                                                 task_details = comparison[j, ]$task_details))
       }
@@ -369,12 +371,13 @@ match_pairs <- function(df) {
     matched_tasks <- bind_rows(matched_tasks, 
                                bind_cols(most_overlapping_id = overlappling_set[max_overlapping[1], ]$task_id,
                                          most_overlapping_start = overlappling_set[max_overlapping[1], ]$start,
+                                         most_overlapping_fragment = overlappling_set[max_overlapping[1], ]$fragment,
                                          most_overlapping_task = overlappling_set[max_overlapping[1], ]$task,
                                          most_overlapping_task_details = overlappling_set[max_overlapping[1], ]$task_details,
                                          most_overlapping_duration = overlappling_set[max_overlapping[1], ]$duration))
   }
   #str(matched_tasks)
-  matched_tasks <- bind_cols(reference %>% ungroup() %>% select(task_id, task_start, task_duration, Cosa, task_details), matched_tasks)
+  matched_tasks <- bind_cols(reference %>% ungroup() %>% select(task_id, task_start, fragment, task_duration, Cosa, task_details), matched_tasks)
   #View(matched_tasks)
   return(matched_tasks)
   
@@ -406,8 +409,8 @@ D_CCC <- function(matched_tasks){
   t1_obs1 <- matched_tasks$Cosa
   t1_obs2 <- matched_tasks$most_overlapping_task
   agreed_task <- if_else(t1_obs1 == t1_obs2, TRUE, FALSE)
-  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, most_overlapping_id, .keep_all = TRUE) %>% 
-    distinct(most_overlapping_id, .keep_all = TRUE)
+  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, fragment, .keep_all = TRUE) %>% 
+    distinct(most_overlapping_id, most_overlapping_fragment, .keep_all = TRUE)
   DCCC <- CCC(matched_tasks$task_duration, matched_tasks$most_overlapping_duration, 
                      ci = "z-transform",
                      conf.level = 0.95)
@@ -430,8 +433,8 @@ plot_D_CCC <- function(matched_tasks, task_color_table){
   t1_obs1 <- matched_tasks$Cosa
   t1_obs2 <- matched_tasks$most_overlapping_task
   agreed_task <- if_else(t1_obs1 == t1_obs2, TRUE, FALSE)
-  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, most_overlapping_id, .keep_all = TRUE) %>% 
-    distinct(most_overlapping_id, .keep_all = TRUE)
+  matched_tasks <- matched_tasks[agreed_task, ] %>% distinct(task_id, fragment, .keep_all = TRUE) %>% 
+    distinct(most_overlapping_id, most_overlapping_fragment, .keep_all = TRUE)
   ggplot(matched_tasks, aes(x = task_duration, y = most_overlapping_duration, colour = color)) +
     geom_point(size = 3) +
     scale_colour_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
@@ -453,8 +456,8 @@ plot_timing <- function(matched_tasks, task_color_table){
   t1_obs2 <- matched_tasks$most_overlapping_task
   agreed_task <- if_else(t1_obs1 == t1_obs2, TRUE, FALSE)
   matched_tasks <- matched_tasks[agreed_task, ] %>% 
-    distinct(task_id, most_overlapping_id, .keep_all = TRUE) %>% 
-    distinct(most_overlapping_id, .keep_all = TRUE) %>% 
+    distinct(task_id, fragment, .keep_all = TRUE) %>% 
+    distinct(most_overlapping_id, most_overlapping_fragment, .keep_all = TRUE) %>% 
     mutate(delta_start = task_start - most_overlapping_start) # %>% print()
   matched_tasks %>% 
     ggplot(aes(y = delta_start, x = Cosa, fill = color)) +
