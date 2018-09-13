@@ -71,7 +71,14 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                           tabName = "irr",
                           # first row
                           fluidRow(
-                          # first row (3 columns)
+                          # first row 
+                            
+                            # third row: iteractive plot
+                            fluidRow(box(width = NULL,
+                                         withSpinner(
+                                           plotlyOutput("interactivePlot", width = "98%")
+                                         ))),
+                         # second row (3 columns)
                           fluidRow(
                             column( # first column
                               width = 4,
@@ -145,12 +152,7 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                                 status = "warning",
                                 plotOutput("timingPlot")
                               ))
-                          ), # end second row
-                          # third row: iteractive plot
-                          fluidRow(
-                            box(width = NULL,
-                                withSpinner(plotlyOutput("interactivePlot", width = "98%"))))
-                          # end third row
+                          )#, # end second row
                         )), 
                         # second IRR tab (static plot of 2 sessions)
                         tabItem(
@@ -210,6 +212,8 @@ server <- function(input, output, session) { #
   prepared_data <- eventReactive(input$compare, {
     prepare_data(data(), input$session1, input$session2)
   })
+  
+  # fit_measures <- 
   
   rv <- reactiveValues(sessions = unique(dati_completi$`session id`))
   # fullFilenames <- list.files(path = "../data", full.names = FALSE)

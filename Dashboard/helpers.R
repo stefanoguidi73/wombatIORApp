@@ -466,10 +466,10 @@ plot_timing <- function(matched_tasks, task_color_table){
     scale_fill_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
                           guide = "legend") +
     xlab("") +
-    ylab("offset (paired tasks start time)") + 
+    ylab("offset (paired tasks starting time)") + 
     #scale_x_discrete(limits = task_color_table$color) +
-    # ggtitle(subtitle = "Distribution of the difference between the start time recorded by the two observers for paired tasks. Positive value represent tasks that the first observer ...") + 
-    theme(legend.position = "none") + #, axis.text.y = element_blank()
+    #ggtitle("Distribution of the difference in the start time recorded by the observers for paired tasks.", subtitle = "Positive indicates that second observer recorded the beginning of the task before than the first one") + 
+    theme(legend.position = "none", axis.ticks.x = element_blank()) + #, axis.text.y = element_blank()
     coord_flip()
 }
 # matched_tasks %>% 
@@ -573,14 +573,14 @@ plot_aligned_sequences <- function(df_long_aggr, task_color_table) {
   df_long_aggr%>% 
     ggplot(aes(x = y, y = as.numeric(obs_id), fill = color)) + 
     geom_tile(colour = "grey") +
-    scale_fill_identity("activity", labels = task_color_table$task, breaks = task_color_table$color,
+    scale_fill_identity("", labels = task_color_table$task, breaks = task_color_table$color,
                         guide = "legend") +
     scale_x_reverse() + 
     #theme_void() +
     ylab("") + 
     xlab("") + 
     scale_y_continuous(breaks = c(1, 2), labels = str_c("obs.", observers_ids, sep = " "), sec.axis = dup_axis()) +
-    theme(axis.text.x = element_text(face = "bold"), 
+    theme(axis.text.x = element_text(face = "bold", size = 13), 
           panel.background = element_rect(fill = "white", colour = NA),
           panel.border = element_rect(colour = NA, fill = NA),
           axis.text.y = element_blank(),
