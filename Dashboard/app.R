@@ -2,6 +2,7 @@ library(shinydashboard)
 library(shiny)
 library(shinycssloaders)
 #library(shinyjs)
+#options(shiny.error = browser)
 
 # load the functions from external file
 source("helpers.R")
@@ -14,7 +15,7 @@ sidebar <- dashboardSidebar(
     id = "sidebarmenu",
     menuItem("Data files", tabName = "datafiles"),
     menuItem("Sessions", tabName = "sessions"),
-    menuItem("Inter Raters Reliability", 
+    menuItem("Inter Observers Reliability", 
              #tabName = "irr",
              menuSubItem("Compare sessions", tabName = "irr"), #, selected = FALSE
              menuSubItem("Static plot", tabName = "staticPlot"),
@@ -34,16 +35,18 @@ sidebar <- dashboardSidebar(
       div(
         selectizeInput('session1', label = "Session 1", choices = c(52:60)),
         selectizeInput('session2', label = "Session 2", choices = c(52:60)),
-        actionButton("compare", "Compare sessions"),
-        actionButton("save", "Save results")
-      )
-    ),
+        actionButton("compare", "Compare sessions")#,
+
+    )),
+    
     conditionalPanel(
-      "input.sidebarmenu == 'irr' || input.sidebarmenu == 'staticPlot' || input.sidebarmenu == 'plotsProp",
+      "input.sidebarmenu == 'irr'",
       div(
         p("Brief information on selected sessions...")
-      )
+      ),
+      actionButton("save", "Save results")
     )
+    #)
   )
 )
 
@@ -213,8 +216,56 @@ server <- function(input, output, session) { #
     prepare_data(data(), input$session1, input$session2)
   })
   
-  # fit_measures <- 
-  
+  fit_measures <- reactive({
+    list(pK1 = PK1()$stats,
+         pAg1 = PK1()$agreement,
+         pK1d = PK1()$detail,
+         pK2 =  ifelse(is.null(PK2()), NULL, PK2()$stats),
+         pAg2 = ifelse(is.null(PK2()), NULL, PK2()$agreement),
+         pK2d = ifelse(is.null(PK2()), NULL, PK2()$detail),
+         pKm = ifelse(is.null(PKM()), NULL, PKM()$value),
+         NK = NK()$stats,
+         NAg = NK()$agreement,
+         NKd = NK()$detail,
+         DCCCr = DCCC()$rho.c$est,
+         DCCCcb = DCCC()$C.b,
+         NW_score = NW()$score,
+         NW_seq = NW()$sequences)
+  })
+  PK1 <- reactive({
+    prepared_data()$wide %>% concordanza_2_task(., 1)
+  }) 
+  PK2 <- reactive({
+    if (max(prepared_data()$wide$n_tasks)>1){
+    prepared_data()$wide %>% concordanza_2_task(., 2)
+    } else {
+        return(NULL)
+      }
+  })   
+  # PKmulti <- reactive({
+  # # check for multitasking here?
+  # if (max(prepared_data()$wide$n_tasks)>1) {
+  #   lapply(2:max(prepared_data()$wide$n_tasks), prepared_data()$wide %>% concordanza_2_task(., i))
+  # } else {
+  #   return(NULL)
+  # }})
+  PKM <- reactive({
+    if (max(prepared_data()$wide$n_tasks)>1) {
+      prepared_data()$wide %>% concordanza_multi()
+    } else {
+      return(NULL)
+    }
+  })
+  NK <- reactive({
+    prepared_data()$matched_pairs %>% concordanza_naming()
+    })
+  DCCC <- reactive({
+    prepared_data()$matched_pairs %>% D_CCC()
+  })
+  NW <- reactive({
+     SNW(prepared_data()$long_aggregated, prepared_data()$tasks)
+  })
+
   rv <- reactiveValues(sessions = unique(dati_completi$`session id`))
   # fullFilenames <- list.files(path = "../data", full.names = FALSE)
   # dati_completi <- read_csv(paste("data/", fullFilenames[1], sep = ""))
@@ -252,32 +303,32 @@ server <- function(input, output, session) { #
     get_sessions_info_2(data())
   })
   # compute and display IORA measures
-  output$k1 <- renderValueBox({
-    valueBox(round(concordanza_2_task(prepared_data()$wide, 1)$stats, digits = 2), width= NULL, subtitle = "K on task (1s windows)", color = "light-blue") 
+  output$k1 <- renderValueBox({ # concordanza_2_task(prepared_data()$wide, 1)$stats
+    valueBox(round(fit_measures()$pK1, digits = 2), width= NULL, subtitle = "K on task (1s windows)", color = "light-blue") 
   })
-  output$agr1 <- renderValueBox({
-    valueBox(paste0(round(concordanza_2_task(prepared_data()$wide, 1)$agreement, digits = 1), "%"), width= NULL, subtitle = "% Agreement on task 1", color = "light-blue") 
+  output$agr1 <- renderValueBox({ # concordanza_2_task(prepared_data()$wide, 1)$agreement
+    valueBox(paste0(round(fit_measures()$pAg1, digits = 1), "%"), width= NULL, subtitle = "% Agreement on task 1", color = "light-blue") 
   })
-  output$k2 <- renderValueBox({
-    valueBox(round(concordanza_2_task(prepared_data()$wide, 2)$stats, digits = 2), width= NULL, subtitle = "K on second task (1s windows)", color = "light-blue") 
+  output$k2 <- renderValueBox({ # concordanza_2_task(prepared_data()$wide, 2)$stats
+    valueBox(round(fit_measures()$pK2, digits = 2), width= NULL, subtitle = "K on second task (1s windows)", color = "light-blue") 
   })
-  output$agr2 <- renderValueBox({
-    valueBox(paste0(round(concordanza_2_task(prepared_data()$wide, 2)$agreement, digits = 1), "%"), width= NULL, subtitle = "% Agreement on second task", color = "light-blue") 
+  output$agr2 <- renderValueBox({ # concordanza_2_task(prepared_data()$wide, 2)$agreement
+    valueBox(paste0(round(fit_measures()$pAg2, digits = 1), "%"), width= NULL, subtitle = "% Agreement on second task", color = "light-blue") 
   })
-  output$iota <- renderValueBox({
-    valueBox(round(concordanza_multi(prepared_data()$wide)$value, digits = 2), width= NULL, subtitle = "Multivariate IOTA", color = "light-blue")
+  output$iota <- renderValueBox({ # concordanza_multi(prepared_data()$wide)$value
+    valueBox(round(fit_measures()$pKm, digits = 2), width= NULL, subtitle = "Multivariate IOTA", color = "light-blue")
   })
-  output$nK <- renderValueBox({
-    valueBox(round(concordanza_naming(prepared_data()$matched_pairs)$stats, digits = 2), width= NULL, subtitle = "K on naming (matched tasks)", color = "green")
+  output$nK <- renderValueBox({ # concordanza_naming(prepared_data()$matched_pairs)$stats
+    valueBox(round(fit_measures()$NK, digits = 2), width= NULL, subtitle = "K on naming (matched tasks)", color = "green")
   })
-  output$agrK <- renderValueBox({
-    valueBox(paste0(round(concordanza_naming(prepared_data()$matched_pairs)$agreement, digits = 1), "%"), width= NULL, subtitle = "% Agreement on naming", color = "green")
+  output$agrK <- renderValueBox({ # concordanza_naming(prepared_data()$matched_pairs)$agreement
+    valueBox(paste0(round(fit_measures()$NAg, digits = 1), "%"), width= NULL, subtitle = "% Agreement on naming", color = "green")
   })
-  output$DCCC <- renderValueBox({
-    valueBox(round(D_CCC(prepared_data()$matched_pairs)$rho.c$est, digits = 2), width= NULL, subtitle = "Duration agreement D-CCC (matched tasks)", color = "yellow")
+  output$DCCC <- renderValueBox({ # D_CCC(prepared_data()$matched_pairs)$rho.c$est
+    valueBox(round(fit_measures()$DCCCr, digits = 2), width= NULL, subtitle = "Duration agreement D-CCC (matched tasks)", color = "yellow")
   })
-  output$offset <- renderValueBox({
-    valueBox(round(D_CCC(prepared_data()$matched_pairs)$C.b, digits = 2), width= NULL, subtitle = "Offset", color = "yellow")
+  output$offset <- renderValueBox({ # D_CCC(prepared_data()$matched_pairs)$C.b
+    valueBox(round(fit_measures()$DCCCcb, digits = 2), width= NULL, subtitle = "Offset", color = "yellow")
   })
   output$durationsPlot <- renderPlot({
     plot_D_CCC(prepared_data()$matched_pairs, 
@@ -317,29 +368,29 @@ server <- function(input, output, session) { #
   })
   # proportion kappa for task 1 details
   output$kappa1Details <- renderUI({
-    kappa_detail <- concordanza_2_task(prepared_data()$wide, 1)$detail
+    kappa_detail <- fit_measures()$pK1d #concordanza_2_task(prepared_data()$wide, 1)$detail
     kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
     format_details_table(kappa_detail)
   }) 
   # proportion kappa for task 2 details
   output$kappa2Details <- renderUI({
-    kappa_detail <- concordanza_2_task(prepared_data()$wide, 2)$detail
+    kappa_detail <- fit_measures()$pK2d # concordanza_2_task(prepared_data()$wide, 2)$detail
     kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
     format_details_table(kappa_detail)
   }) 
   # naming kappa details table
   output$namingDetails <- renderUI({
-    kappa_detail <- concordanza_naming(prepared_data()$matched_pairs)$detail
+    kappa_detail <- fit_measures()$NKd # concordanza_naming(prepared_data()$matched_pairs)$detail
     kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
     format_details_table(kappa_detail)
   }) 
   # sequence similarity
-  output$seqNW <- renderValueBox({
-    valueBox(round(SNW(prepared_data()$long_aggregated, prepared_data()$tasks)$score, digits = 2), width= NULL, subtitle = "N-W sequence similarity score", color = "aqua")
+  output$seqNW <- renderValueBox({ # SNW(prepared_data()$long_aggregated, prepared_data()$tasks)$score
+    valueBox(round(fit_measures()$NW_score, digits = 2), width= NULL, subtitle = "N-W sequence similarity score", color = "aqua")
   })
   # plot best aligned sequences
-  output$alignedSequences <- renderPlot({
-    plot_aligned_sequences(SNW(prepared_data()$long_aggregated, prepared_data()$tasks)$sequences, prepared_data()$tasks)
+  output$alignedSequences <- renderPlot({ # SNW(prepared_data()$long_aggregated, prepared_data()$tasks)$sequences
+    plot_aligned_sequences(fit_measures()$NW_seq, prepared_data()$tasks)
   },
   height = 600)
   # raw proportions plots

@@ -79,7 +79,7 @@ plot_prop_time_on_tasks_sub <- function(df, session_1_id, session_2_id) {
     ggplot( aes(x = sottocategoria, y = pro_time_on_act, alpha = factor(`observer id`), fill = Cosa)) +
     geom_bar(stat = "identity", position = position_dodge()) +
     scale_alpha_manual(values = c(1,.75), guide = guide_legend(title = "Obs ID", reverse = TRUE)) +
-    guides(fill = guide_legend(reverse = TRUE)) +
+    guides(fill = "none") +
     geom_text(aes(label = paste(round(pro_time_on_act, digits = 1), "%", sep = " ")), position = position_dodge(.9), size = 3, hjust = -0.2) +
     scale_y_continuous(limits = c(0,55), breaks = seq(0,50, by = 10)) +
     ylab("Percentuale del tempo sul task") +
@@ -315,8 +315,8 @@ concordanza_multi <- function(df_flat){
   return(kappa_multi)
 }
 
-# task matching for Naming Kappa ----
-# df is long format aggregated
+# task matching by most overlap for Naming Kappa ----
+# input df is long format aggregated, output is 
 match_pairs <- function(df) {
   obs_ids <- unique(df$obs_id)
   # determine reference (defined as the longest sequence)
@@ -567,10 +567,11 @@ SNW <- function(df, task_table) {
 }
 
 # plot function for aligned sequences ----
+# input is actually df sequences, the returned by SNW
 plot_aligned_sequences <- function(df_long_aggr, task_color_table) {
   df_long_aggr <- df_long_aggr %>% mutate(obs_id = as.factor(obs_id))
   observers_ids <- levels(df_long_aggr$obs_id)
-  df_long_aggr%>% 
+  df_long_aggr %>% 
     ggplot(aes(x = y, y = as.numeric(obs_id), fill = color)) + 
     geom_tile(colour = "grey") +
     scale_fill_identity("", labels = task_color_table$task, breaks = task_color_table$color,
