@@ -30,6 +30,18 @@ get_sessions_info_2 <- function(df) {
   #htmlTable(header = c("Session ID", "Obs. ID", "Participant ID", "Setting ID", "Date", "Start", "End", "Duration", "Tasks", "Interruptions"), rnames = FALSE, caption = "Summary information about all the observation sessions conducted during the study")
 }
 
+get_sessions_maxlenght <- function(df, sessions) {
+  d1 <- df %>% filter(`session id` %in% sessions) %>% 
+    group_by(`session id`) %>%
+    summarise(
+      start = first(`session start`),
+      end = first(`session end`),
+      duration = as.numeric(first(`session end`) - first(`session start`))
+    ) %>% 
+    summarise(max(duration))
+  as.numeric(d1)
+}
+#get_sessions_maxlenght(dati_prova_irr_2, c(54, 60))
 # list available data files
 
 # Functions to plot proportions of time on various task (ignore time ordered nature of data) ----
@@ -102,9 +114,9 @@ append_rows_df <- function(df, df2, i, ultimo, primo, fragment){
 # function create_long_time_windows() to divide data into 1 second time windows (long with multiple instances of the time windows in which there was multitasking) with df assumed to be aligned (i.g. that started simultaneously). It depends on append_rows_df() defined before ----
 # input: df in long form with data from (at least) two parallel sessions (assumed to have started at the same time), IDs of the sessions to compare
 # output: df in long format, including info on windows_id, obs_id, task_id, task, fragment
-create_long_time_windows <- function(df, session_1_id, session_2_id){
+create_long_time_windows <- function(df, sessions){
   # filter dfs
-  df <- df %>% filter(`session id` %in% c(session_1_id, session_2_id))
+  df <- df %>% filter(`session id` %in% sessions)
   # compute 2 columns representing the start/end time of the task in seconds, from the beginning of the session
   df$inizio <- df$`start time` - df$`session start`
   df$fine <- df$`end time` - df$`session start` 
@@ -244,8 +256,8 @@ prepare_palette <- function(df_long){
 }
 
 # function to prepare all data for IRR ----
-prepare_data <- function(df_raw, sess_1id, sess_2id){
-  long <- create_long_time_windows(df_raw, sess_1id, sess_2id)
+prepare_data <- function(df_raw, sessions){
+  long <- create_long_time_windows(df_raw, sessions)
   wide <- long %>% flat_tasks_df() # used for proportion kappa
   long <- add_track_n(long, wide) # used for static plot
   long_aggregated <- add_subcats_info(add_extra_info(long), df_raw) # used for interactive plot
@@ -258,6 +270,21 @@ prepare_data <- function(df_raw, sess_1id, sess_2id){
               wide = wide, 
               long_aggregated = long_aggregated, 
               matched_pairs = matched_pairs, 
+              tasks = task_table
+  )
+}
+
+prepare_data_multi <- function(df_raw, sessions){ # sessions is a vector of session ids, with lenght 2 at least
+  long <- create_long_time_windows(df_raw, sessions)
+  wide <- long %>% flat_tasks_df() # used for proportion kappa
+  long <- add_track_n(long, wide) # used for static plot and to aggregate further
+  long_aggregated <- add_subcats_info(add_extra_info(long), df_raw) # used for interactive plot
+  task_table <- prepare_palette(long) # used for colors in plots/tables
+  long <- long %>% left_join(task_table)
+  long_aggregated <- long_aggregated %>% left_join(task_table %>% rename(Cosa = task))
+  out <- list(long = long, 
+              wide = wide, 
+              long_aggregated = long_aggregated,
               tasks = task_table
   )
 }
@@ -296,6 +323,30 @@ concordanza_2_task <- function(df_flat, task_n){
   return(out)
 }
 
+# function to compute multirater kappa from wide data ----
+# intended for more than 2 observers (group sessions), do not return percent agreement or contengencies table
+concordanza_2_task_multi <- function(df_flat, task_n){
+  osservatori <- unique(df_flat$obs_id) # dovrebbero essere più di 2
+  colonna <- 4 + task_n
+  observations <- matrix()
+  primo <- TRUE
+  for (i in osservatori){
+    task <- str_trim(df_flat[df_flat$obs_id == i, colonna])
+    task <- ifelse(is.na(task), " NONE", task)
+    if (primo){
+      observations <- task
+    } else {
+      observations <- cbind(observations, task, deparse.level = 0)
+    }
+    primo <- FALSE
+  }
+  kappa_t1 <- kappam.fleiss(observations, detail = TRUE) # Fleiss' kappa on task
+  detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
+  out <- list(stats = kappa_t1$value,
+              detail = detail)
+  return(out)
+}
+
 # multivariate agreement (Janson, H., & Olsson, U. 2001) ----
 concordanza_multi <- function(df_flat){
   # prepare dataset (must be a list)
@@ -309,6 +360,33 @@ concordanza_multi <- function(df_flat){
     task_obs1 <- ifelse(is.na(task_obs1), " NONE", task_obs1)
     task_obs2 <- ifelse(is.na(task_obs2), " NONE", task_obs2)
     multi_df[[tasks]] <- cbind(task_obs1, task_obs2)
+  }
+  # compute iota
+  kappa_multi <- iota(multi_df, scaledata = "nominal")
+  return(kappa_multi)
+}
+
+# multivariate agreement for group sessions ----
+concordanza_multi_group <- function(df_flat){
+  # prepare dataset (must be a list)
+  max_n_tasks <- max(df_flat$n_tasks)
+  osservatori <- unique(df_flat$obs_id)
+  multi_df <- vector("list", max_n_tasks)
+  for (tasks in (1:max_n_tasks)){
+    colonna <- 4 + tasks
+    observations <- matrix()
+    primo <- TRUE
+    for (i in osservatori){
+      task <- str_trim(df_flat[df_flat$obs_id == i, colonna])
+      task <- ifelse(is.na(task), " NONE", task)
+      if (primo){
+        observations <- task
+      } else {
+        observations <- cbind(observations, task, deparse.level = 0)
+      }
+      primo <- FALSE
+    }
+    multi_df[[tasks]] <- observations
   }
   # compute iota
   kappa_multi <- iota(multi_df, scaledata = "nominal")
@@ -522,6 +600,7 @@ plot_sequences_rect_ok <- function(df, task_color_table, axis_unit = "min", show
   sequence_plot
 } 
 
+# build html table for individual categories K (bootstrap style) ----
 format_details_table <- function(table){
   tags$table(class = "table",
              tags$thead(tags$tr(
@@ -535,7 +614,77 @@ format_details_table <- function(table){
              ))
 }
 
-
+# plot time windows (for static plot or group comparison plot) ----
+# code
+plot_time_windows <- function(df, start_sec = 0, end_sec = NULL, axis_unit = "min", gaps = FALSE, show.labels = TRUE, vertical = FALSE) {
+  if (is.null(end_sec)){
+    end_sec <- max(df$wind_id)
+  }
+  if (!"track" %in% names(df)) {
+    df <- df %>% add_track_n_2()
+  }
+  max_n_active_tasks <- max(df$track)
+  if (!gaps | (end_sec - start_sec >180)){
+    space = 1
+  } else {
+    space = .9
+  }
+  if (axis_unit == "min"){
+    titolo <- "Time (minutes in the session)"
+    tacche <- seq(start_sec, end_sec, by = 60)
+    etichette <- str_c(tacche/60, "'", sep = "")
+  } else {
+    titolo <- "Time (seconds in the session)"
+    tacche <- seq(start_sec, end_sec, by = 10)
+    etichette <- tacche
+  }
+  task_extra_info <- df %>% 
+    group_by(obs_id, task_id, fragment) %>% 
+    summarise(midpoint = (first(wind_id) + last(wind_id))/2, 
+              task_start = first(wind_id),
+              task_end = (last(wind_id) + 0.5), 
+              track = first(track)) %>% 
+    filter(task_end >= start_sec, 
+           task_start <= end_sec) %>% 
+    mutate(interruzione = if_else(max(fragment) - fragment > 0, 1, 0),
+           midpoint = if_else(midpoint < start_sec, 
+                              (start_sec + task_end - 0.5)/2, 
+                              if_else(midpoint > end_sec, 
+                                      (task_start + end_sec)/2,
+                                      midpoint))) %>% 
+    separate(task_id, sep = "_", remove = FALSE, into = c("obs","sess", "task_id_label")) %>% 
+    select(-obs, -sess)
+  # here I could do the left join with the orignal df, by task id obviously, but i don't like that it is external
+  sequence_plot <- ggplot(df %>% filter(wind_id >= start_sec, wind_id <= end_sec), aes(wind_id, fill = task)) +
+    geom_bar(aes(group = task_id), width = space, position = position_stack(reverse = TRUE)) +
+    xlab(titolo) +
+    ylab("") +
+    scale_x_continuous(
+      breaks = tacche,
+      label = etichette,
+      minor_breaks = seq(start_sec, end_sec, by = 10),
+      limits = c(start_sec, end_sec)
+    ) +
+    scale_y_continuous(
+      breaks = 1:max_n_active_tasks - 0.5,
+      label = paste("Task", 1:max_n_active_tasks, sep = " "),
+      minor_breaks = NULL
+    ) +
+    geom_segment(aes(x = task_end, xend = task_end, y = (track - 1), yend = track, linetype =  factor(interruzione)), data = task_extra_info, inherit.aes = FALSE, show.legend = FALSE) 
+  if (show.labels){
+    sequence_plot <- sequence_plot +
+      geom_text(aes(x = midpoint, y = (track - 0.5), label = task_id_label), data = task_extra_info, inherit.aes = FALSE, size = 2, angle = if_else(vertical, 0, 90))
+  }
+  if (vertical) {
+    sequence_plot <- sequence_plot + 
+      facet_wrap(~ obs_id, ncol = 2) +
+      coord_flip()
+  } else {
+    sequence_plot <- sequence_plot + 
+      facet_wrap(~ obs_id, ncol = 1)
+  }
+  sequence_plot
+} 
 
 # Sequence Needleman-wunsch computation ----
 SNW <- function(df, task_table) {
@@ -576,6 +725,7 @@ plot_aligned_sequences <- function(df_long_aggr, task_color_table) {
     geom_tile(colour = "grey") +
     scale_fill_identity("", labels = task_color_table$task, breaks = task_color_table$color,
                         guide = "legend") +
+    guides(fill = guide_legend(ncol = 2)) +
     scale_x_reverse() + 
     #theme_void() +
     ylab("") + 

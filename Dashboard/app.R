@@ -18,6 +18,7 @@ sidebar <- dashboardSidebar(
     menuItem("Inter Observers Reliability", 
              #tabName = "irr",
              menuSubItem("Compare sessions", tabName = "irr"), #, selected = FALSE
+             menuSubItem("Multi observers", tabName = "irr_multi"),
              menuSubItem("Static plot", tabName = "staticPlot"),
              menuSubItem("Raw proportions plot", tabName = "plotsProp"),
              menuSubItem("Track progresses", tabName = "trackProgress")),
@@ -38,7 +39,23 @@ sidebar <- dashboardSidebar(
         actionButton("compare", "Compare sessions")#,
 
     )),
-    
+    conditionalPanel(
+      "input.sidebarmenu == 'sessions' || input.sidebarmenu == 'irr_multi' ",
+      div(
+        selectizeInput('session_ids', label = "Chose the sessions (if > 2)", choices = c(52:60), multi = TRUE),
+        actionButton("compareMulti", "Compare all sessions")#,
+        
+      )),
+    conditionalPanel(
+      "input.sidebarmenu == 'staticPlot' ",
+      div(
+        numericInput("start", "Plot from (sec):", min = 0, value = 0),
+        numericInput("end", "To (sec):", min = 0, value = 300),
+        checkboxInput("labs", "Show labels", value = TRUE),
+        radioButtons("units", "Time unit in axis:", c("Minutes" = "min",
+                                                      "Seconds" = "sec")),
+        actionButton("update", "Update plot")
+      )),
     conditionalPanel(
       "input.sidebarmenu == 'irr'",
       div(
@@ -67,13 +84,14 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                           tabName = "sessions",
                           h2("List of observation sessions in data file"),
                           p("Choose the sessions to compare in the sidebar and click on the \"Compare\" button in the sidebar. Please note that the comparison is only meaningful for observation sessions of the same subject conducted in parallel by two observers. Moreover, the system assumes that the session started at the same time."),
+                          p("If you want to compare more than 2 sessions at the time (group observation), select all the ids of the sessions to compare from the third dropdown list, and click on the \"Compare all sessions\" button." ),
                           dataTableOutput("sessions")
                         ),
                         # third page, irr dashboard ----
                         tabItem(
                           tabName = "irr",
                           # first row
-                          fluidRow(
+                          #fluidRow(
                           # first row 
                             
                             # third row: iteractive plot
@@ -156,15 +174,63 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                                 plotOutput("timingPlot")
                               ))
                           )#, # end second row
-                        )), 
-                        # second IRR tab (static plot of 2 sessions)
+                        ), #)
+                        # fourth page (compare multi session +3 observers) ----
+                        tabItem(
+                          tabName = "irr_multi",
+                            # first row: iteractive plot
+                            fluidRow(box(width = NULL,
+                                         withSpinner(
+                                           plotOutput("interactivePlotMulti", width = "98%", height = "550px")
+                                         ))),
+                            # second row (3 columns)
+                            fluidRow(
+                              column( # first column
+                                width = 4,
+                                withSpinner(valueBoxOutput("k1multi", width= NULL), proxy.height = "100px"), # FleissK1
+                                #valueBoxOutput("agr1", width= NULL),
+                                box(
+                                  title = "Details (task 1)",
+                                  width = NULL,
+                                  solidHeader = TRUE,
+                                  collapsible = TRUE,
+                                  collapsed = TRUE,
+                                  status = "primary",
+                                  tableOutput("kappa1DetailsMulti")
+                                )
+                              ),
+                              column( # second column
+                                width = 4,
+                                withSpinner(valueBoxOutput("k2multi", width= NULL), proxy.height = "100px"), # FleissK on naming
+                                #valueBoxOutput("agrK", width= NULL),
+                                box(
+                                  title = "Details (task 2)",
+                                  width = NULL,
+                                  solidHeader = TRUE,
+                                  collapsible = TRUE,
+                                  collapsed = TRUE,
+                                  status = "primary",
+                                  tableOutput("kappa2DetailsMulti")
+                                )),
+                              column( # third column
+                                width = 4,
+                                withSpinner(valueBoxOutput("iota2", width= NULL), proxy.height = "100px")
+                            )#, # end second row
+                          )
+                          ),
+                        # fifth IRR tab (static plot of 2 sessions) ----
                         tabItem(
                           tabName = "staticPlot",
-                          h2("A Plot"),
-                          "Plot"#,
-                          #dataTableOutput("files") 
+                          #h2("A Plot"),
+                          #"Plot"#,
+                          box(
+                            title = "Comparison of task sequences recorded by observers",
+                            width = NULL,
+                            solidHeader = TRUE,
+                            plotOutput("staticPlot")
+                          )
                         ),
-                        # fourthpage (plot of proportions) ----
+                        # sixth (plot of proportions) ----
                         tabItem(
                           tabName = "plotsProp",
                           fluidRow(
@@ -175,7 +241,7 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                               plotOutput("propPlot")
                             ),
                             box(
-                              title = "Proportion of time on different tasks",
+                              title = "Proportion of time on subcategories",
                               width = 6,
                               solidHeader = TRUE,
                               plotOutput("propPlotSub")
@@ -183,7 +249,8 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                           )
                           # h2("Plots titles"),
                           # "Two plots"
-                        ),
+                        ), 
+                        # seventh tab (plot irr measures across time) ----
                         tabItem(
                           tabName = "trackProgress",
                           h2("Plots IRR over time"),
@@ -213,7 +280,15 @@ server <- function(input, output, session) { #
   })
   
   prepared_data <- eventReactive(input$compare, {
-    prepare_data(data(), input$session1, input$session2)
+    prepare_data(data(), c(input$session1, input$session2))
+  })
+  
+  prepared_data_2 <- eventReactive(input$compareMulti, {
+    prepare_data_multi(data(), input$session_ids)
+  })
+  
+  durata <- eventReactive(input$compare, {
+    get_sessions_maxlenght(data(), c(input$session1, input$session2))
   })
   
   fit_measures <- reactive({
@@ -236,11 +311,11 @@ server <- function(input, output, session) { #
     prepared_data()$wide %>% concordanza_2_task(., 1)
   }) 
   PK2 <- reactive({
-    if (max(prepared_data()$wide$n_tasks)>1){
-    prepared_data()$wide %>% concordanza_2_task(., 2)
+    if (max(prepared_data()$wide$n_tasks) > 1) {
+      prepared_data()$wide %>% concordanza_2_task(., 2)
     } else {
-        return(NULL)
-      }
+      return(NULL)
+    }
   })   
   # PKmulti <- reactive({
   # # check for multitasking here?
@@ -266,6 +341,33 @@ server <- function(input, output, session) { #
      SNW(prepared_data()$long_aggregated, prepared_data()$tasks)
   })
 
+  fit_measures_group <- reactive({
+    list(
+      pK1 = PK1_group()$stats,
+      pK1d = PK1_group()$detail,
+      pK2 =  ifelse(is.null(PK2_group()), NULL, PK2_group()$stats),
+      pK2d = ifelse(is.null(PK2_group()), NULL, PK2_group()$detail),
+      pKm = ifelse(is.null(PKM_group()), NULL, PKM_group()$value)
+    )
+  })
+  PK1_group <- reactive({
+    prepared_data_2()$wide %>% concordanza_2_task_multi(., 1)
+  }) 
+  PK2_group <- reactive({
+    if (max(prepared_data_2()$wide$n_tasks) > 1){
+      prepared_data_2()$wide %>% concordanza_2_task_multi(., 2)
+    } else {
+      return(NULL)
+      }
+  })
+  PKM_group <- reactive({
+    if (max(prepared_data_2()$wide$n_tasks) > 1) {
+      prepared_data_2()$wide %>% concordanza_multi_group()
+    } else {
+      return(NULL)
+    }
+  })
+  
   rv <- reactiveValues(sessions = unique(dati_completi$`session id`))
   # fullFilenames <- list.files(path = "../data", full.names = FALSE)
   # dati_completi <- read_csv(paste("data/", fullFilenames[1], sep = ""))
@@ -281,6 +383,12 @@ server <- function(input, output, session) { #
   observeEvent(input$compare, {
     updateTabItems(session, "sidebarmenu", selected = "irr") # change page
     #shinyjs::hide(selector = "ul.menu-open");
+    updateNumericInput(session, "end", value = durata())
+  })
+  
+  observeEvent(input$compareMulti, {
+    updateTabItems(session, "sidebarmenu", selected = "irr_multi") # change page
+    #shinyjs::hide(selector = "ul.menu-open");
   })
   
   # load sessions
@@ -291,6 +399,10 @@ server <- function(input, output, session) { #
                          server = TRUE)
     updateSelectizeInput(session,
                          'session2',
+                         choices = rv$session_ids,
+                         server = TRUE)
+    updateSelectizeInput(session,
+                         'session_ids',
                          choices = rv$session_ids,
                          server = TRUE)
   })
@@ -369,12 +481,15 @@ server <- function(input, output, session) { #
   # proportion kappa for task 1 details
   output$kappa1Details <- renderUI({
     kappa_detail <- fit_measures()$pK1d #concordanza_2_task(prepared_data()$wide, 1)$detail
+    #print(kappa_detail) this is a tibble, ok
     kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
     format_details_table(kappa_detail)
   }) 
   # proportion kappa for task 2 details
   output$kappa2Details <- renderUI({
-    kappa_detail <- fit_measures()$pK2d # concordanza_2_task(prepared_data()$wide, 2)$detail
+    #kappa_detail <- fit_measures()$pK2d # concordanza_2_task(prepared_data()$wide, 2)$detail
+    kappa_detail <- concordanza_2_task(prepared_data()$wide, 2)$detail
+    # print(kappa_detail) # why a list? this is the source of the error in the next line
     kappa_detail <- kappa_detail %>% left_join(prepared_data()$tasks)
     format_details_table(kappa_detail)
   }) 
@@ -399,6 +514,35 @@ server <- function(input, output, session) { #
   })
   output$propPlotSub <- renderPlot({
     plot_prop_time_on_tasks_sub(data(), input$session1, input$session2)
+  })
+  # measure for group sessions
+  output$k1multi <- renderValueBox({ 
+    valueBox(round(fit_measures_group()$pK1, digits = 2), width= NULL, subtitle = "K on task (1s windows)", color = "light-blue") 
+  })
+  output$k2multi <- renderValueBox({ 
+    valueBox(round(fit_measures_group()$pK2, digits = 2), width= NULL, subtitle = "K on second task (1s windows)", color = "light-blue") 
+  })
+  output$iota2 <- renderValueBox({ 
+    valueBox(round(fit_measures_group()$pKm, digits = 2), width= NULL, subtitle = "Multivariate IOTA", color = "light-blue")
+  })
+  output$kappa1DetailsMulti <- renderUI({
+    kappa_detail <- fit_measures_group()$pK1d 
+    kappa_detail <- kappa_detail %>% left_join(prepared_data_2()$tasks)
+    format_details_table(kappa_detail)
+  }) 
+  output$kappa2DetailsMulti <- renderUI({
+    # kappa_detail <- fit_measures_group()$pK2d 
+    kappa_detail <- concordanza_2_task_multi(prepared_data_2()$wide, 2)$detail
+    kappa_detail <- kappa_detail %>% left_join(prepared_data_2()$tasks)
+    format_details_table(kappa_detail)
+  }) 
+  #plot group sessions
+  output$interactivePlotMulti <- renderPlot({
+    plot_time_windows(prepared_data_2()$long)
+  })
+  # plot static plots
+  output$staticPlot <- renderPlot({
+    plot_time_windows(prepared_data()$long, start_sec = input$start, end_sec = input$end, axis_unit = input$units, show.labels = input$labs)
   })
 }
 
