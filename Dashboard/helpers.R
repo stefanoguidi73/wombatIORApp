@@ -44,17 +44,6 @@ get_sessions_maxlenght <- function(df, sessions) {
 }
 #get_sessions_maxlenght(dati_prova_irr_2, c(54, 60))
 
-prepare_filename <- function(df_raw, sessions) {  # date_session_obs1_id_obs2_id_sess1_id_sess2_id_part_id.csv
-  df_raw <- df_raw %>% 
-    filter(`session id` %in% sessions)
-  obs_ids <- unique(df_raw$`observer id`)
-  session_date <- df_raw[1, ]$`session date`
-  session_time <- df_raw[1, ]$`session start`
-  part_id <- df_raw[1, ]$`participant id`
-  filename <- str_c(str_c(session_date, hour(session_time), minute(session_time), "observers", str_c(obs_ids, collapse = "_"), "sessions", str_c(sessions, collapse = "_"), part_id, sep = "_"), ".csv", sep = "")
-  return(filename)
-}
-# prepare_filename(dati_prova_irr_2, c(54, 60))
 
 # Functions to plot proportions of time on various task (ignore time ordered nature of data) ----
 # main categories only
@@ -752,31 +741,20 @@ plot_aligned_sequences <- function(df_long_aggr, task_color_table) {
     coord_flip()
 }
 
-# save results ----
-#outputDir <- "Dashboard/saved_results"
+# function to save results and load saved ones ----
 outputDir <- "saved_results"
-# retest <- list(pK1 = NULL, pAg1 = NULL) #, pK2,
-#      pAg2 ,
-#      pKm ,
-#      NK ,
-#      NAg,
-#      DCCCr, DCCCcb ,
-#      NW_score)
-# retest[[c("pK1", "pAg1")]]
-# test2 <- list( pK1 = c('a','b','c'), pAg1 = c('a','b','c'))
-# as.data.frame(test2)
-# test2[c(1, 2)]
-# as.data.frame(test2[c(1, 2)])
-# test3 <- as.data.frame(test2[c(1, 2)])
-# saveData(test3)
-# write_csv(test3, path = file.path(outputDir, fileName))
-x <- c("2011-12-31 12:59:59", "2010-01-01 12:11", "2010-01-01 12", "2010-01-01")
-ymd_hms(x, truncated = 3)
-ymd_hms(as.character(Now()), truncated = 3)
-ymd_hms(as.character(Now()), truncated = 3)
-hour(Now())
-hms(as.character(Now()))
 
+prepare_filename <- function(df_raw, sessions) {  # date_session_obs1_id_obs2_id_sess1_id_sess2_id_part_id.csv
+  df_raw <- df_raw %>% 
+    filter(`session id` %in% sessions)
+  obs_ids <- unique(df_raw$`observer id`)
+  session_date <- df_raw[1, ]$`session date`
+  session_time <- df_raw[1, ]$`session start`
+  part_id <- df_raw[1, ]$`participant id`
+  filename <- str_c(str_c(session_date, hour(session_time), minute(session_time), "observers", str_c(obs_ids, collapse = "_"), "sessions", str_c(sessions, collapse = "_"), part_id, sep = "_"), ".csv", sep = "")
+  return(filename)
+}
+# prepare_filename(dati_prova_irr_2, c(54, 60))
 
 saveData <- function(data, df_raw, sessions) {
   # Create a unique file name
@@ -785,45 +763,74 @@ saveData <- function(data, df_raw, sessions) {
   write_csv(data, path = file.path(outputDir, fileName))
 }
 
-
 loadData <- function() {
   # Read all the files into a list
   filenames <- list.files(outputDir, full.names = FALSE)
-  data <- str_split_fixed(filenames, "_", n = 10)
-  data <- data[, c(1:3,5:6,8:10)]
-  data <- cbind(1:nrow(data), filenames, data)
-  data <- as.data.frame(data)
-  data[, c(1, 4:9)] <- apply(data[, c(1, 4:9)], 2, as.numeric)
-  names(data) <- c("iota id", "filename", "date", "hour", "minutes", "obs1 id", "obs2 id", "sess1 id", "sess2 id", "participant id")
-  data <- data %>% 
-    separate(., `participant id`, sep = "\\.", into = c("participant id", "ext")) %>% 
-    select(-ext)
+  if (length(filenames) == 0) {
+    data <- data.frame(`iota id` = NA)
+  } else {
+    data <- str_split_fixed(filenames, "_", n = 10)
+    data <- data[, c(1:3,5:6,8:10)]
+    data <- cbind(1:nrow(data), filenames, data)
+    data <- as.data.frame(data)
+    data[, c(1, 4:9)] <- apply(data[, c(1, 4:9)], 2, as.numeric)
+    names(data) <- c("iota id", "filename", "date", "hour", "minutes", "obs1 id", "obs2 id", "sess1 id", "sess2 id", "participant id")
+    data <- data %>% 
+      separate(., `participant id`, sep = "\\.", into = c("participant id", "ext")) %>% 
+      select(-ext)
+  }
   return(data)
 }
-# str(list.files("Dashboard/saved_results", full.names = FALSE)[1])
 
+# outputDir <- "Dashboard/saved_results"
+# filenames <- list.files(outputDir, full.names = FALSE)
+# prova_saved <-  loadData()
+# prova_saved <- prova_saved %>% filter(`iota id` %in% 1:2)
+# str_c(outputDir, prova_saved$filename, sep = "/")
+# str_c(prova_saved$`iota id`, 
+#       str_c(prova_saved$date, 
+#             str_c(prova_saved$hour, 
+#                   prova_saved$minutes,
+#                   sep = ":"),
+#             sep = " "), 
+#       sep = ": ")
 
-# prova_risultati <- str_split_fixed(list.files("Dashboard/saved_results", full.names = FALSE), "_", n = 10)
-# str(prova_risultati[, c(1:3,5:6,8:10)])
-# prova_risultati <- prova_risultati[, c(1:3,5:6,8:10)]
-# 
-# prova_risultati <- cbind(1:nrow(prova_risultati), list.files("Dashboard/saved_results", full.names = FALSE), prova_risultati)
-# as.numeric()
-# prova_risultati <- as.data.frame(prova_risultati)
-# prova_risultati[, c(1, 4:9)] <- apply(prova_risultati[, c(1, 4:9)], 2, as.numeric)
-# names(prova_risultati) <- c("iota id", "filename", "date", "hour", "minutes", "obs1 id", "obs2 id", "sess1 id", "sess2 id", "participant id")
-# prova_risultati <- prova_risultati %>% separate(., `participant id`, sep = "\\.", into = c("participant id", "ext"))  %>% 
-#   select(-ext)
-
-loadSelectedData <- function() {
+loadSelectedData <- function(data, iota_ids) {
+  data <- data %>% filter(`iota id` %in% iota_ids)
+  files <- str_c(outputDir, data$filename, sep = "/")
   # Read all the files into a list
-  files <- list.files(outputDir, full.names = TRUE)
-  data <- lapply(files, read.csv, stringsAsFactors = FALSE) 
+  # files <- list.files(outputDir, full.names = TRUE)
+  dataout <- lapply(files, read.csv, stringsAsFactors = FALSE) 
   
   # Concatenate all data together into one data.frame
-  data <- do.call(rbind, data)
-  data
+  dataout <- do.call(rbind, dataout)
+  # add timestamp as first columns (for x in plot)
+  timing <- str_c(data$`iota id`, 
+                  str_c(data$date, 
+                        str_c(data$hour, 
+                              data$minutes,
+                              sep = ":"),
+                        sep = " "), 
+                  sep = ": ")
+  dataout <- bind_cols(id = timing, dataout)
+  # now need to reshape in long form for plotting
+  dataout <- dataout %>% gather(., "measure", "value", 2:11)
+  dataout # a tibble after reshaping
 }
+
+# loadSelectedData(prova_saved, c(1,2,3)) %>% plot_IOTA_measures #View()
+
+plot_IOTA_measures <- function(df) {
+  df %>% filter(measure %in% c("pK1", "pK2", "pKm", "NK")) %>%
+    ggplot(aes(x = id, y = value, colour = measure, group = measure)) +
+    geom_line() + 
+    geom_point() +
+    scale_y_continuous(limits = c(-0.1, 1)) + 
+    ggtitle("Prova titolo")
+}
+
+
+
 # tests -----
 # aggregati_prova <- add_extra_info(dati_to_plot_compare_new_long_final) %>%
 #   add_subcats_info(., dati_prova_irr_2) %>%

@@ -42,7 +42,7 @@ sidebar <- dashboardSidebar(
     conditionalPanel(
       "input.sidebarmenu == 'sessions' || input.sidebarmenu == 'irr_multi' ",
       div(
-        selectizeInput('session_ids', label = "Chose the sessions (if > 2)", choices = c(52:60), multi = TRUE),
+        selectizeInput('session_ids', label = "Choose the sessions (if > 2)", choices = c(52:60), multi = TRUE),
         actionButton("compareMulti", "Compare all sessions")#,
         
       )),
@@ -66,7 +66,7 @@ sidebar <- dashboardSidebar(
     conditionalPanel(
       "input.sidebarmenu == 'trackProgress'",
       div(
-        selectizeInput('results_ids', label = "Chose the IOTA ids to plot", choices = c(1:10), multi = TRUE),
+        selectizeInput('results_ids', label = "Choose the IOTA ids to plot", choices = c(1:10), multi = TRUE),
         actionButton("plotSelectedResults", "Plot selected results")#
       )
     )
@@ -302,6 +302,11 @@ server <- function(input, output, session) { #
     get_sessions_maxlenght(data(), c(input$session1, input$session2))
   })
   
+  prepared_results <- eventReactive(input$plotSelectedResults, {
+    # code to load and reshape the selected results, to use in renderplot
+    loadSelectedData(saved_results(), input$results_ids)
+    # input$results_ids
+  })
   # saved_results <- eventReactive(input$save, {
   #   loadData()
   # })
@@ -427,9 +432,7 @@ server <- function(input, output, session) { #
   })
   
   
-  
-  
-  # load sessions
+  # populate sidebar menus 
   observe({
     updateSelectizeInput(session,
                          'session1',
@@ -591,6 +594,10 @@ server <- function(input, output, session) { #
     #loadData()
     saved_results()
     # %>% 
+  })
+  output$resultsPlot <- renderPlot({
+    prepared_results() %>% 
+      plot_IOTA_measures()
   })
 }
 
