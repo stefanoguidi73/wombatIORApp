@@ -2,7 +2,7 @@ library(shinydashboard)
 library(shiny)
 library(shinycssloaders)
 #library(shinyjs)
-#options(shiny.error = browser)
+options(shiny.error = browser)
 
 # load the functions from external file
 source("helpers.R")
@@ -53,8 +53,8 @@ sidebar <- dashboardSidebar(
         numericInput("end", "To (sec):", min = 0, value = 300),
         checkboxInput("labs", "Show labels", value = TRUE),
         radioButtons("units", "Time unit in axis:", c("Minutes" = "min",
-                                                      "Seconds" = "sec")),
-        actionButton("update", "Update plot")
+                                                      "Seconds" = "sec"))#,
+       # actionButton("update", "Update plot")
       )),
     conditionalPanel(
       "input.sidebarmenu == 'irr'",
@@ -62,6 +62,13 @@ sidebar <- dashboardSidebar(
         p("Brief information on selected sessions...")
       ),
       actionButton("save", "Save results")
+    ),
+    conditionalPanel(
+      "input.sidebarmenu == 'trackProgress'",
+      div(
+        selectizeInput('results_ids', label = "Chose the IOTA ids to plot", choices = c(1:10), multi = TRUE),
+        actionButton("plotSelectedResults", "Plot selected results")#
+      )
     )
     #)
   )
@@ -83,8 +90,8 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                         tabItem(
                           tabName = "sessions",
                           h2("List of observation sessions in data file"),
-                          p("Choose the sessions to compare in the sidebar and click on the \"Compare\" button in the sidebar. Please note that the comparison is only meaningful for observation sessions of the same subject conducted in parallel by two observers. Moreover, the system assumes that the session started at the same time."),
-                          p("If you want to compare more than 2 sessions at the time (group observation), select all the ids of the sessions to compare from the third dropdown list, and click on the \"Compare all sessions\" button." ),
+                          p("To perform an IORA for two observation sessions, choose the sessions to compare in the sidebar and click on the \"Compare\" button in the sidebar. Please note that the comparison is only meaningful for observation sessions of the same subject conducted in parallel by two observers. Moreover, the system assumes that the session started at the same time."),
+                          p("If you want to compare more than 2 sessions at the time (group observation sessions), select all the ids of the sessions to compare from the third dropdown menu in the sidebar, and click on the \"Compare all sessions\" button. Please note that beside the assumptions about sessions start/end, all the sessions to compare must have been recorded by a different observer." ),
                           dataTableOutput("sessions")
                         ),
                         # third page, irr dashboard ----
@@ -175,7 +182,7 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                               ))
                           )#, # end second row
                         ), #)
-                        # fourth page (compare multi session +3 observers) ----
+                        # fourth page (compare 3+ observers) ----
                         tabItem(
                           tabName = "irr_multi",
                             # first row: iteractive plot
@@ -227,7 +234,7 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                             title = "Comparison of task sequences recorded by observers",
                             width = NULL,
                             solidHeader = TRUE,
-                            plotOutput("staticPlot")
+                            withSpinner(plotOutput("staticPlot"))
                           )
                         ),
                         # sixth (plot of proportions) ----
@@ -238,13 +245,13 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                               title = "Proportion of time on different tasks",
                               width = 6,
                               solidHeader = TRUE,
-                              plotOutput("propPlot")
+                              withSpinner(plotOutput("propPlot"))
                             ),
                             box(
                               title = "Proportion of time on subcategories",
                               width = 6,
                               solidHeader = TRUE,
-                              plotOutput("propPlotSub")
+                              withSpinner(plotOutput("propPlotSub"))
                             )
                           )
                           # h2("Plots titles"),
@@ -253,8 +260,10 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                         # seventh tab (plot irr measures across time) ----
                         tabItem(
                           tabName = "trackProgress",
-                          h2("Plots IRR over time"),
-                          "A few plots..."
+                          h2("List of saved IORA results"),
+                          p("Select the session files to track in the dropdown menu in the sidebar, and click on the \"Plot results\" button."),
+                          dataTableOutput("results"),
+                          plotOutput("resultsPlot")
                         )
                       ) # end tabsets
 ) # end body
@@ -275,6 +284,8 @@ server <- function(input, output, session) { #
     read_csv(paste("data/", fullFilenames[1], sep = ""))
   session_ids <- unique(dati_completi$`session id`)
   
+  # saved_IOTA <- loadData()
+  
   data <- eventReactive(input$load, {
     read_csv(paste("data/", input$datafile, sep = ""))
   })
@@ -290,6 +301,10 @@ server <- function(input, output, session) { #
   durata <- eventReactive(input$compare, {
     get_sessions_maxlenght(data(), c(input$session1, input$session2))
   })
+  
+  # saved_results <- eventReactive(input$save, {
+  #   loadData()
+  # })
   
   fit_measures <- reactive({
     list(pK1 = PK1()$stats,
@@ -373,6 +388,18 @@ server <- function(input, output, session) { #
   # dati_completi <- read_csv(paste("data/", fullFilenames[1], sep = ""))
   # session_ids <- unique(dati_completi$`session id`)
   
+  # saved_results <- reactiveValues(
+  #   iota_id = loadData()$`iota id`
+  # )
+  
+  saved_results <- eventReactive(n_saved_results(), {
+    loadData()
+  }
+    #iota_id = loadData()$`iota id`
+  )
+  
+  n_saved_results <- reactiveVal(nrow(loadData()))
+  
   observeEvent(input$load, {
     #dati_completi <- read_csv(paste("data/", input$datafile, sep = ""))
     rv$session_ids <- unique(data()$`session id`)
@@ -390,6 +417,17 @@ server <- function(input, output, session) { #
     updateTabItems(session, "sidebarmenu", selected = "irr_multi") # change page
     #shinyjs::hide(selector = "ul.menu-open");
   })
+  observeEvent(input$save, {
+    data <- as.data.frame(fit_measures()[c(1:2, 4:5, 7:9, 11:13)])
+    #print(str(data))
+    saveData(data, data(), c(input$session1, input$session2)) 
+    #saved_results
+    # print(names(fit_measures()))
+    n_saved_results(nrow(loadData()))
+  })
+  
+  
+  
   
   # load sessions
   observe({
@@ -404,6 +442,10 @@ server <- function(input, output, session) { #
     updateSelectizeInput(session,
                          'session_ids',
                          choices = rv$session_ids,
+                         server = TRUE)
+    updateSelectizeInput(session,
+                         'results_ids',
+                         choices = saved_results()$`iota id`,
                          server = TRUE)
   })
   
@@ -543,6 +585,12 @@ server <- function(input, output, session) { #
   # plot static plots
   output$staticPlot <- renderPlot({
     plot_time_windows(prepared_data()$long, start_sec = input$start, end_sec = input$end, axis_unit = input$units, show.labels = input$labs)
+  })
+  # saved results table
+  output$results <- renderDataTable({
+    #loadData()
+    saved_results()
+    # %>% 
   })
 }
 
