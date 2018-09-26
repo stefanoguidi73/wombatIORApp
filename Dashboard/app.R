@@ -581,15 +581,15 @@ server <- function(input, output, session) { #
     kappa_detail <- kappa_detail %>% left_join(prepared_data_2()$tasks)
     format_details_table(kappa_detail)
   }) 
-  #plot group sessions
+  # plot group sessions
   output$interactivePlotMulti <- renderPlot({
     plot_time_windows(prepared_data_2()$long)
   })
-  # plot static plots
+  # static plots paired sequences
   output$staticPlot <- renderPlot({
     plot_time_windows(prepared_data()$long, start_sec = input$start, end_sec = input$end, axis_unit = input$units, show.labels = input$labs)
   })
-  # saved results table
+  # saved results table anbd plot
   output$results <- renderDataTable({
     #loadData()
     saved_results()

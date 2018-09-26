@@ -9,6 +9,17 @@ library(listviewer) # to debug plotly
 library(DescTools)
 library(scales)
 library(NameNeedle)
+library(grid)
+library(gridExtra)
+
+# color palette hex ----
+#03a9f4 light-blue (for PK)  primary = #4285F4
+#4caf50 green (for NK) success = #00C851
+#ffeb3b yellow  warning = #ffbb33
+#???? aqua 
+#show_col(c("#03a9f4", "#4caf50", "#ffeb3b"))
+#show_col(c("#4285F4", "#00C851", "#ffbb33", "#33b5e5")) # OK m well not really
+# show_col(c("#428bca", "#4cb85c", "orange", "#5bc0de")) # better
 
 # set parameters for sequence similarity matrix/score computation (NW algorithm)
 defaultNeedleParams$MATCH <- 3
@@ -818,18 +829,45 @@ loadSelectedData <- function(data, iota_ids) {
   dataout # a tibble after reshaping
 }
 
-# loadSelectedData(prova_saved, c(1,2,3)) %>% plot_IOTA_measures #View()
+#loadSelectedData(prova_saved, c(1,2,3)) %>% View() # plot_IOTA_measures #
 
 plot_IOTA_measures <- function(df) {
-  df %>% filter(measure %in% c("pK1", "pK2", "pKm", "NK")) %>%
+  left <- df %>% filter(measure %in% c("pK1", "pK2", "pKm", "NK")) %>%
+    ggplot(aes(x = id, y = value, colour = measure, group = measure)) +
+    geom_line(aes(size = measure, linetype = measure)) + 
+    geom_point() +
+    scale_y_continuous(limits = c(-0.1, 1)) + 
+    ggtitle("Kappa (proportion of time on tasks and naming)") +
+    xlab("") +
+    ylab("") +
+    scale_colour_manual(values = c("#4cb85c", rep("#428bca", times = 3)), breaks = c("NK", "pK1", "pK2", "pKm")) + 
+    scale_size_manual(breaks = c("NK", "pK1", "pK2", "pKm"), values = c(1, 1, 1, 2)) + 
+    scale_linetype_manual(breaks = c("NK", "pK1", "pK2", "pKm"), values = c("solid", "solid", "dotted", "solid")) + 
+    theme(title = element_text(size = 10))
+  middle <- df %>% filter(measure %in% c("pAg1", "pAg2", "NAg")) %>% 
+    ggplot(aes(x = id, y = value, fill = measure)) +
+    geom_bar(stat = "identity", position = position_dodge()) + 
+    scale_y_continuous(limits = c(0, 100)) +
+    scale_fill_manual(breaks = c("NAg", "pAg1", "pAg2"), values = c("#4cb85c", "#428bca", "#4aafcd")) + 
+    ggtitle("Percent agreement (prop. time and naming)") +
+    xlab("") +
+    ylab("") +
+    theme(title = element_text(size = 10))
+  right <- df %>% filter(measure %in% c("DCCCr", "DCCCcb", "NW_score")) %>% 
     ggplot(aes(x = id, y = value, colour = measure, group = measure)) +
     geom_line() + 
     geom_point() +
     scale_y_continuous(limits = c(-0.1, 1)) + 
-    ggtitle("Prova titolo")
+    ggtitle("Tasks duration and sequence agreement") +
+    xlab("") +
+    ylab("") +
+    theme(title = element_text(size = 10))
+  panel <- grid.arrange(left, middle, right, top = textGrob("Inter Observers Reliability Measures across time", gp = gpar(fontsize = 14, fontface = "bold")), nrow = 1)
+  #panel
 }
 
-
+# outputDir <- "Dashboard/saved_results"
+#loadSelectedData(prova_saved, c(1,2,3)) %>% plot_IOTA_measures #
 
 # tests -----
 # aggregati_prova <- add_extra_info(dati_to_plot_compare_new_long_final) %>%
