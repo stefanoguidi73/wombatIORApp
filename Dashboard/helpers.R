@@ -13,13 +13,14 @@ library(grid)
 library(gridExtra)
 
 # color palette hex ----
-#03a9f4 light-blue (for PK)  primary = #4285F4
-#4caf50 green (for NK) success = #00C851
-#ffeb3b yellow  warning = #ffbb33
-#???? aqua 
-#show_col(c("#03a9f4", "#4caf50", "#ffeb3b"))
-#show_col(c("#4285F4", "#00C851", "#ffbb33", "#33b5e5")) # OK m well not really
-# show_col(c("#428bca", "#4cb85c", "orange", "#5bc0de")) # better
+# final palette:
+
+# PK (light-blue): "#428bca" (very close but not identical, alternative is "steelblue", variante scura: "dodgerblue4")
+# NK (green): "#28a745"  (second best: "00c851")
+# D-CCC (orange):  "orange"
+# NW (aqua): "deepskyblue" "#00BFFF"
+
+# show_col(c("#428bca", "#28a745", "orange", "deepskyblue"))
 
 # set parameters for sequence similarity matrix/score computation (NW algorithm)
 defaultNeedleParams$MATCH <- 3
@@ -840,7 +841,7 @@ plot_IOTA_measures <- function(df) {
     ggtitle("Kappa (proportion of time on tasks and naming)") +
     xlab("") +
     ylab("") +
-    scale_colour_manual(values = c("#4cb85c", rep("#428bca", times = 3)), breaks = c("NK", "pK1", "pK2", "pKm")) + 
+    scale_colour_manual(values = c("#28a745", rep("#428bca", times = 3)), breaks = c("NK", "pK1", "pK2", "pKm")) + 
     scale_size_manual(breaks = c("NK", "pK1", "pK2", "pKm"), values = c(1, 1, 1, 2)) + 
     scale_linetype_manual(breaks = c("NK", "pK1", "pK2", "pKm"), values = c("solid", "solid", "dotted", "solid")) + 
     theme(title = element_text(size = 10))
@@ -848,16 +849,18 @@ plot_IOTA_measures <- function(df) {
     ggplot(aes(x = id, y = value, fill = measure)) +
     geom_bar(stat = "identity", position = position_dodge()) + 
     scale_y_continuous(limits = c(0, 100)) +
-    scale_fill_manual(breaks = c("NAg", "pAg1", "pAg2"), values = c("#4cb85c", "#428bca", "#4aafcd")) + 
+    scale_fill_manual(breaks = c("NAg", "pAg1", "pAg2"), values = c("#28a745", "#428bca", "dodgerblue4")) + 
     ggtitle("Percent agreement (prop. time and naming)") +
     xlab("") +
     ylab("") +
     theme(title = element_text(size = 10))
   right <- df %>% filter(measure %in% c("DCCCr", "DCCCcb", "NW_score")) %>% 
     ggplot(aes(x = id, y = value, colour = measure, group = measure)) +
-    geom_line() + 
+    geom_line(aes(linetype = measure)) + 
     geom_point() +
     scale_y_continuous(limits = c(-0.1, 1)) + 
+    scale_colour_manual(breaks = c("DCCCcb", "DCCCr", "NW_score"), values = c("orange", "orange", "deepskyblue")) + 
+    scale_linetype_manual(breaks = c("DCCCcb", "DCCCr", "NW_score"), values = c("dotted", "solid", "solid")) + 
     ggtitle("Tasks duration and sequence agreement") +
     xlab("") +
     ylab("") +

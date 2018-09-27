@@ -102,10 +102,14 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                           # first row 
                             
                             # third row: iteractive plot
-                            fluidRow(box(width = NULL,
+                            #fluidRow(
+                              box(
+                                width = NULL,
                                          withSpinner(
                                            plotlyOutput("interactivePlot", width = "98%")
-                                         ))),
+                                         )
+                                #)
+                              ),
                          # second row (3 columns)
                           fluidRow(
                             column( # first column
@@ -260,10 +264,21 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                         # seventh tab (plot irr measures across time) ----
                         tabItem(
                           tabName = "trackProgress",
-                          h2("List of saved IORA results"),
-                          p("Select the session files to track in the dropdown menu in the sidebar, and click on the \"Plot results\" button."),
-                          dataTableOutput("results"),
-                          plotOutput("resultsPlot")
+                          fluidRow(
+                            box(
+                              width = NULL,
+                              title = "List of saved IORA results",
+                              p("Select the session files to track in the dropdown menu in the sidebar, and click on the \"Plot results\" button."),
+                              dataTableOutput("results")
+                            )
+                          ),
+                          #fluidRow(
+                            box(
+                              width = NULL,
+                              title = "Inter Observers Reliability Measures across time",
+                              plotOutput("resultsPlot")
+                            )
+                          #)
                         )
                       ) # end tabsets
 ) # end body
