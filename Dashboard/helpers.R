@@ -38,10 +38,74 @@ get_sessions_info_2 <- function(df) {
       end = first(`session end`),
       duration = as.hms(first(`session end`) - first(`session start`)),
       n_task_recorded = n(),
-      n_interruptions = sum(`num of interrupts`)
+      n_interruptions = sum(`num of interrupts`),
+      tot_time = sum(`total time`)
     ) #%>%
   #htmlTable(header = c("Session ID", "Obs. ID", "Participant ID", "Setting ID", "Date", "Start", "End", "Duration", "Tasks", "Interruptions"), rnames = FALSE, caption = "Summary information about all the observation sessions conducted during the study")
 }
+
+get_selected_sessions_info <- function(df, sessions){
+  df %>% 
+    filter(`session id` %in% sessions) %>% 
+    group_by(`session id`) %>% 
+    summarise(
+      observer_id = first(`observer id`),
+      participant = first(`participant id`),
+      setting = first(`location id`),
+      date = first(`session date`),
+      start = first(`session start`),
+      end = first(`session end`),
+      duration = as.hms(first(`session end`) - first(`session start`)),
+      n_task_recorded = n(),
+      n_interruptions = sum(`num of interrupts`),
+      tot_time = sum(`total time`)
+    ) %>% 
+    mutate(interruption_rate = as.hms(duration/(n_interruptions)),
+           multitasking_time = as.hms(tot_time - duration),
+           perc_time_multi = as.numeric(multitasking_time)*100/as.numeric(duration))
+}
+
+# get_selected_sessions_info(dati_prova_irr_2, c(54, 60)) %>% View()
+# get_selected_sessions_info(dati_prova_irr_2, c(54, 60)) %>% View()
+# get_selected_sessions_info(dati_prova_irr_2, c(53, 59)) %>% t() #View()# 
+
+# version using df long aggregated form
+# View(dati_preparati_prova$durations)
+get_selected_sessions_info_2 <- function(df){
+  durata <- max(df$task_end)
+  df %>%
+    group_by(obs_id, task_id) %>%
+    summarise(
+      n_interruptions = sum(interruzione),
+      task_duration = sum(task_duration + 1)
+    ) %>%
+    summarise(
+      n_task = n(),
+      n_interruptions = sum(n_interruptions),
+      task_duration = sum(task_duration)
+    ) %>%
+    mutate(
+      time_multitasking = as.hms(task_duration - durata),
+      prop_multi = (task_duration - durata) / durata,
+      int_rate = as.hms(durata / n_interruptions)
+    )
+}
+
+# get_selected_sessions_info_2(dati_preparati_prova$durations) %>% t()
+
+# common info (df raw)
+get_selected_sessions_info_common <- function(df, sessions){
+  df %>% 
+    filter(`session id` %in% sessions) %>% 
+    group_by(`session id`) %>% 
+    summarise(
+      observer_id = first(`observer id`),
+      participant = first(`participant id`),
+      setting = first(`location id`),
+      date = first(`session date`))
+}
+
+#get_selected_sessions_info_common(dati_prova_irr_2, c(54, 60))
 
 get_sessions_maxlenght <- function(df, sessions) {
   d1 <- df %>% filter(`session id` %in% sessions) %>% 
@@ -54,7 +118,7 @@ get_sessions_maxlenght <- function(df, sessions) {
     summarise(max(duration))
   as.numeric(d1)
 }
-#get_sessions_maxlenght(dati_prova_irr_2, c(54, 60))
+#get_sessions_maxlenght(dati_prova_irr_2, c(54, 60)) # used for static plot input fields
 
 
 # Functions to plot proportions of time on various task (ignore time ordered nature of data) ----
@@ -164,7 +228,7 @@ create_long_time_windows <- function(df, sessions){
           df_new <- append_rows_df(df, df_new, i, ultimo, primo, pausa + 1)
         } else { # ultima interruzione
           ultimo <- as.numeric(df[i, ]$fine) - 1
-          df_new <- append_rows_df(df, df_new, i, ultimo, primo, pausa + 1)
+          if (ultimo > primo) df_new <- append_rows_df(df, df_new, i, ultimo, primo, pausa + 1)
         }
       }
     }
@@ -623,9 +687,33 @@ format_details_table <- function(table){
              )),
              tags$tbody(apply(table, 
                               1, 
-                              function(x) tags$tr(eval(parse(text = paste0('list(',paste0(c(paste0('tags$td(span(style="width:1.1em; height:1.1em; display:inline-block; background-color:', x[3],';"))'), paste0('tags$td("', x[1:2],'")')),collapse=","),')')))))
+                              function(x) tags$tr(eval(parse(text = paste0('list(', paste0(c(paste0('tags$td(span(style="width:1.1em; height:1.1em; display:inline-block; background-color:', x[3], ';"))'), paste0('tags$td("', x[1:2], '")')), collapse=","), ')')))))
              ))
 }
+
+# build html table for sidebar -----
+# prove_summary1 <- get_selected_sessions_info_common(dati_prova_irr_2, c(54, 60))
+# prove_summary1[1, 2]
+# prova_summary2 <- get_selected_sessions_info_2(dati_preparati_prova$durations) %>% 
+#   select(n_task:n_interruptions, int_rate, time_multitasking, prop_multi) %>% 
+#   mutate(prop_multi = round(prop_multi*100, digits = 1)) %>% 
+#   t() %>% 
+#   as.data.frame() %>% 
+#   rownames_to_column()
+
+format_summary_table <- function(table_1, table_2){
+  tags$table(class = "table",
+             tags$thead(tags$tr(
+               tags$th(""),
+               tags$th(paste0("Obs ", table_1[1, 2], " (", table_1[1, 1], ")")),
+               tags$th(paste0("Obs ", table_1[2, 2], " (", table_1[2, 1], ")"))
+             )),
+             tags$tbody(apply(table_2,
+                              1,
+                              function(x) tags$tr(eval(parse(text = paste0('list(', paste0(c(paste0('tags$td("', x[1], '")'), paste0('tags$td("', x[2:3], '")')), collapse=","), ')')))))))
+}
+
+# format_summary_table(prove_summary1, prova_summary2)
 
 # plot time windows (for static plot or group comparison plot) ----
 # code
@@ -844,7 +932,7 @@ plot_IOTA_measures <- function(df) {
     scale_colour_manual(values = c("#28a745", rep("#428bca", times = 3)), breaks = c("NK", "pK1", "pK2", "pKm")) + 
     scale_size_manual(breaks = c("NK", "pK1", "pK2", "pKm"), values = c(1, 1, 1, 2)) + 
     scale_linetype_manual(breaks = c("NK", "pK1", "pK2", "pKm"), values = c("solid", "solid", "dotted", "solid")) + 
-    theme(title = element_text(size = 10))
+    theme(title = element_text(size = 10, face = "bold"), legend.justification = "top", legend.title = element_blank())
   middle <- df %>% filter(measure %in% c("pAg1", "pAg2", "NAg")) %>% 
     ggplot(aes(x = id, y = value, fill = measure)) +
     geom_bar(stat = "identity", position = position_dodge()) + 
@@ -853,7 +941,7 @@ plot_IOTA_measures <- function(df) {
     ggtitle("Percent agreement (prop. time and naming)") +
     xlab("") +
     ylab("") +
-    theme(title = element_text(size = 10))
+    theme(title = element_text(size = 10, face = "bold"), legend.justification = "top", legend.title = element_blank())
   right <- df %>% filter(measure %in% c("DCCCr", "DCCCcb", "NW_score")) %>% 
     ggplot(aes(x = id, y = value, colour = measure, group = measure)) +
     geom_line(aes(linetype = measure)) + 
@@ -864,8 +952,8 @@ plot_IOTA_measures <- function(df) {
     ggtitle("Tasks duration and sequence agreement") +
     xlab("") +
     ylab("") +
-    theme(title = element_text(size = 10))
-  panel <- grid.arrange(left, middle, right, top = textGrob("Inter Observers Reliability Measures across time", gp = gpar(fontsize = 14, fontface = "bold")), nrow = 1)
+    theme(title = element_text(size = 10, face = "bold"), legend.justification = "top", legend.title = element_blank())
+  panel <- grid.arrange(left, middle, right, nrow = 1) # , top = textGrob("Inter Observers Reliability Measures across time", gp = gpar(fontsize = 14, fontface = "bold"))
   #panel
 }
 
