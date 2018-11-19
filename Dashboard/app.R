@@ -2,7 +2,7 @@ library(shinydashboard)
 library(shiny)
 library(shinycssloaders)
 #library(shinyjs)
-options(shiny.error = browser)
+#options(shiny.error = browser)
 
 # load the functions from external file
 source("helpers.R")
@@ -58,9 +58,10 @@ sidebar <- dashboardSidebar(
       )),
     conditionalPanel(
       "input.sidebarmenu == 'irr'",
-      div(
-        p("Brief information on selected sessions...")
-      ),
+      # div(
+      #   p("Brief information on selected sessions...") # add id observers and participant, n. tasks recorded by each, % time in multitasking, n. interruptions
+      # ),
+      # uiOutput("sessionsInfo"), # or uiOutput("sessionsInfo") to be rendered in server
       actionButton("save", "Save results")
     ),
     conditionalPanel(
@@ -97,18 +98,14 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                         # third page, irr dashboard ----
                         tabItem(
                           tabName = "irr",
-                          # first row
-                          #fluidRow(
-                          # first row 
-                            
-                            # third row: iteractive plot
-                            #fluidRow(
+                          # first row: iteractive plot
+                            #fluidRow( # uncomment to remove spate outside the box
                               box(
                                 width = NULL,
                                          withSpinner(
                                            plotlyOutput("interactivePlot", width = "98%")
                                          )
-                                #)
+                                #)  # uncomment to remove spate outside the box
                               ),
                          # second row (3 columns)
                           fluidRow(
@@ -264,13 +261,13 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                         # seventh tab (plot irr measures across time) ----
                         tabItem(
                           tabName = "trackProgress",
-                          fluidRow(
+                          fluidRow( # comment this to add the space outside of the box
                             box(
                               width = NULL,
                               title = "List of saved IORA results",
                               p("Select the session files to track in the dropdown menu in the sidebar, and click on the \"Plot results\" button."),
                               dataTableOutput("results")
-                            )
+                            ) # comment this to add the space outside of the box
                           ),
                           #fluidRow(
                             box(
@@ -349,7 +346,8 @@ server <- function(input, output, session) { #
     if (max(prepared_data()$wide$n_tasks) > 1) {
       prepared_data()$wide %>% concordanza_2_task(., 2)
     } else {
-      return(NULL)
+      #return(NULL)
+      list(agreement = NA, stats = NA, detail = NA, contigency_table = NA)
     }
   })   
   # PKmulti <- reactive({
@@ -363,7 +361,7 @@ server <- function(input, output, session) { #
     if (max(prepared_data()$wide$n_tasks)>1) {
       prepared_data()$wide %>% concordanza_multi()
     } else {
-      return(NULL)
+      return(list(value = NA))
     }
   })
   NK <- reactive({
@@ -392,14 +390,14 @@ server <- function(input, output, session) { #
     if (max(prepared_data_2()$wide$n_tasks) > 1){
       prepared_data_2()$wide %>% concordanza_2_task_multi(., 2)
     } else {
-      return(NULL)
+      return(list(stats = NA, detail = NA))
       }
   })
   PKM_group <- reactive({
     if (max(prepared_data_2()$wide$n_tasks) > 1) {
       prepared_data_2()$wide %>% concordanza_multi_group()
     } else {
-      return(NULL)
+      return(list(value = NA))
     }
   })
   
@@ -547,6 +545,8 @@ server <- function(input, output, session) { #
   }) 
   # proportion kappa for task 2 details
   output$kappa2Details <- renderUI({
+    if (is.na(fit_measures$pK2d))
+      return(NULL)
     #kappa_detail <- fit_measures()$pK2d # concordanza_2_task(prepared_data()$wide, 2)$detail
     kappa_detail <- concordanza_2_task(prepared_data()$wide, 2)$detail
     # print(kappa_detail) # why a list? this is the source of the error in the next line
@@ -614,6 +614,19 @@ server <- function(input, output, session) { #
     prepared_results() %>% 
       plot_IOTA_measures()
   })
+  # session info box in sidebar 
+  output$sessionsInfo <- renderUI({
+    
+    # tabella1 <- get_selected_sessions_info_common(data(), c(input$session1, input$session2))
+    # tabella2 <- get_selected_sessions_info_2(prepared_data()$durations) %>% 
+    #   select(n_task:n_interruptions, int_rate, time_multitasking, prop_multi) %>%
+    #   mutate(prop_multi = round(prop_multi*100, digits = 1)) %>%
+    #   t() %>% 
+    #   as.data.frame() %>% 
+    #   rownames_to_column()
+    # format_summary_table(tabella1, tabella2)
+  })
+  
 }
 
 
