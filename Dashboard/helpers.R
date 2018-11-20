@@ -228,7 +228,7 @@ create_long_time_windows <- function(df, sessions){
           df_new <- append_rows_df(df, df_new, i, ultimo, primo, pausa + 1)
         } else { # ultima interruzione
           ultimo <- as.numeric(df[i, ]$fine) - 1
-          if (ultimo > primo) df_new <- append_rows_df(df, df_new, i, ultimo, primo, pausa + 1)
+          if (ultimo >= primo) df_new <- append_rows_df(df, df_new, i, ultimo, primo, pausa + 1)
         }
       }
     }
