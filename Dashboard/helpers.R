@@ -303,13 +303,13 @@ add_subcats_info <- function(df, raw_df){
   return(df)
 }
 
-# function add_extra_info ----
+# function add_extra_info aggregating  ----
 add_extra_info <- function(df) {
   df %>% 
     group_by(obs_id, task_id, fragment) %>% 
-    summarise(midpoint = (first(wind_id) + last(wind_id))/2, 
+    summarise(midpoint = (first(wind_id) + last(wind_id) + 1)/2, 
               task_start = first(wind_id), 
-              task_end = last(wind_id), 
+              task_end = last(wind_id) + 1, 
               track = first(track),
               task_duration = task_end - task_start) %>% 
     mutate(interruzione = if_else(max(fragment) - fragment > 0, 1, 0)) %>%  #,
@@ -478,7 +478,7 @@ match_pairs <- function(df) {
   n1 <- nrow(df %>% filter(obs_id == obs_ids[1]))
   n2 <- nrow(df %>% filter(obs_id == obs_ids[2]))
   if (n1 >= n2) {
-    # reference is the first observer
+    # reference is the first observer (default)
     reference <- df %>% filter(obs_id == obs_ids[1])
     n_reference <- n1
     comparison <- df %>% filter(obs_id == obs_ids[2])
@@ -521,7 +521,8 @@ match_pairs <- function(df) {
       }
     }
     # find most overlapping task
-    # print(overlappling_set)
+    #print(reference[i, ]$task_id)
+    #print(overlappling_set)
     max_overlapping <- which(overlappling_set$overlap == max(overlappling_set$overlap))
     matched_tasks <- bind_rows(matched_tasks, 
                                bind_cols(most_overlapping_id = overlappling_set[max_overlapping[1], ]$task_id,
@@ -650,7 +651,7 @@ plot_sequences_rect_ok <- function(df, task_color_table, axis_unit = "min", show
   }
   
   # ploting code
-  sequence_plot <- ggplot(df, aes(xmin = task_start, xmax = task_end + 1, ymin = track - 0.5 , ymax = track + 0.5)) +
+  sequence_plot <- ggplot(df, aes(xmin = task_start, xmax = task_end, ymin = track - 0.5 , ymax = track + 0.5)) +
     geom_rect(aes(fill = color), colour = "grey50") + #, lineend = "square"
     xlab(titolo) +
     ylab("") +
@@ -668,7 +669,7 @@ plot_sequences_rect_ok <- function(df, task_color_table, axis_unit = "min", show
       minor_breaks = NULL,
       limits = c(0.5, max_n_active_tasks + 0.5)
     ) +
-    geom_segment(aes(x = task_end + 1, xend = task_end + 1, y = (track - 0.5), yend = track + 0.5, linetype =  factor(interruzione)), data = df, inherit.aes = FALSE, show.legend = FALSE, colour = "black") +
+    geom_segment(aes(x = task_end, xend = task_end, y = (track - 0.5), yend = track + 0.5, linetype =  factor(interruzione)), data = df, inherit.aes = FALSE, show.legend = FALSE, colour = "black") +
     facet_wrap(~ obs_id, ncol = 1) 
   if (show.labels){
     sequence_plot <- sequence_plot +
