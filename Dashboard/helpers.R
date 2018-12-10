@@ -142,7 +142,7 @@ plot_prop_time_on_tasks <- function(df, session_1_id, session_2_id) {
     geom_bar(stat = "identity", position = position_dodge()) + 
     scale_alpha_manual(values = c(1,.75), guide = guide_legend(title = "Obs ID", reverse = TRUE)) +
     geom_text(aes(label = paste(round(pro_time_on_act, digits = 1), "%", sep = " ")), position = position_dodge(.9), size = 3, hjust = -0.2) + 
-    scale_y_continuous(limits = c(0,55), breaks = seq(0,50, by = 10)) +
+    scale_y_continuous(limits = c(0, 70), breaks = seq(0, 70, by = 10)) +
     ylab("Percentuale del tempo sul task") +
     xlab("Tipo di attività (categoria)" ) +
     guides(fill = "none") + 
