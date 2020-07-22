@@ -11,6 +11,7 @@ library(scales)
 library(NameNeedle)
 library(grid)
 library(gridExtra)
+library(DT)
 
 # color palette hex ----
 # final palette:
@@ -189,7 +190,7 @@ append_rows_df <- function(df, df2, i, ultimo, primo, fragment){
 }
 
 # function create_long_time_windows() to divide data into 1 second time windows (long with multiple instances of the time windows in which there was multitasking) with df assumed to be aligned (i.g. that started simultaneously). It depends on append_rows_df() defined before ----
-# input: df in long form with data from (at least) two parallel sessions (assumed to have started at the same time), IDs of the sessions to compare
+# input: df with raw data from (at least) two parallel sessions (assumed to have started at the same time), IDs of the sessions to compare
 # output: df in long format, including info on windows_id, obs_id, task_id, task, fragment
 create_long_time_windows <- function(df, sessions){
   # filter dfs
@@ -388,12 +389,21 @@ concordanza_2_task <- function(df_flat, task_n){
   b <- factor(task_obs2, levels = livelli)
   contingenze_task <- table(a, b)
   perc_agreement <- sum(apply((contingenze_task * diag(nrow = length(livelli))), 1, "sum"))*100/sum(apply(contingenze_task, 1, "sum"))
-  # cat("\nAgreement on task ", task_n, ": ", round(perc_agreement, digits = 1), "%\n", sep = "")
-  # print(kappa_t1)
-  # print(contingenze_task)
-  detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
+  cat("\nAgreement on task ", task_n, ": ", round(perc_agreement, digits = 1), "%\n", sep = "")
+  #print(kappa_t1)
+  #print(str(kappa_t1))
+  #print(str(kappa_t1$detail))
+  #print(as.data.frame.matrix(kappa_t1$detail))
+  #return(as.data.frame.matrix(kappa_t1$detail) %>% rownames_to_column(., var = "task"))
+  #print(contingenze_task)
+  detail <- as.data.frame.matrix(kappa_t1$detail) %>% rownames_to_column()
+  names(detail) <- c("task", "kappa", "z", "p.value")
+  print(detail)
+
+  detail <- as_tibble(detail) %>%  select(task, kappa)
+  
   #return(kappa_t1)
-  out <- list(agreement = perc_agreement, 
+  out <- list(agreement = perc_agreement,
               stats = kappa_t1$value,
               detail = detail,
               contigency_table = contingenze_task)
@@ -418,7 +428,15 @@ concordanza_2_task_multi <- function(df_flat, task_n){
     primo <- FALSE
   }
   kappa_t1 <- kappam.fleiss(observations, detail = TRUE) # Fleiss' kappa on task
-  detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
+  
+  detail <- as.data.frame.matrix(kappa_t1$detail) %>% rownames_to_column()
+  
+  print(detail)
+  names(detail) <- c("task", "kappa", "z", "p.value")
+  
+  detail <- as_tibble(detail) %>%  select(task, kappa)
+  
+  #detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
   out <- list(stats = kappa_t1$value,
               detail = detail)
   return(out)
@@ -551,7 +569,14 @@ concordanza_naming <- function(matched_tasks){
   perc_agreement <- sum(apply((contingenze_task * diag(nrow = length(livelli))), 1, "sum"))*100/sum(apply(contingenze_task, 1, "sum"))
   # cat("\nAgreement on matched tasks: ", round(perc_agreement, digits = 1), "%\n\n")
   # print(kappa_t1)
-  detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
+  detail <- as.data.frame.matrix(kappa_t1$detail) %>% rownames_to_column()
+  
+  print(detail)
+  names(detail) <- c("task", "kappa", "z", "p.value")
+  
+  detail <- as_tibble(detail) %>%  select(task, kappa)
+  
+  #detail <- as.tibble(kappa_t1$detail) %>% filter(Var2 == "Kappa") %>% select(task = Var1, kappa = n)
   out <- list(agreement = perc_agreement, 
               stats = kappa_t1$value,
               detail = detail,
@@ -868,14 +893,14 @@ loadData <- function() {
   # Read all the files into a list
   filenames <- list.files(outputDir, full.names = FALSE)
   if (length(filenames) == 0) {
-    data <- data.frame(`iota id` = NA)
+    data <- data.frame(`iora id` = NA)
   } else {
     data <- str_split_fixed(filenames, "_", n = 10)
     data <- data[, c(1:3,5:6,8:10)]
     data <- cbind(1:nrow(data), filenames, data)
     data <- as.data.frame(data)
     data[, c(1, 4:9)] <- apply(data[, c(1, 4:9)], 2, as.numeric)
-    names(data) <- c("iota id", "filename", "date", "hour", "minutes", "obs1 id", "obs2 id", "sess1 id", "sess2 id", "participant id")
+    names(data) <- c("iora id", "filename", "date", "hour", "minutes", "obs1 id", "obs2 id", "sess1 id", "sess2 id", "participant id")
     data <- data %>% 
       separate(., `participant id`, sep = "\\.", into = c("participant id", "ext")) %>% 
       select(-ext)
@@ -897,7 +922,7 @@ loadData <- function() {
 #       sep = ": ")
 
 loadSelectedData <- function(data, iota_ids) {
-  data <- data %>% filter(`iota id` %in% iota_ids)
+  data <- data %>% filter(`iora id` %in% iota_ids)
   files <- str_c(outputDir, data$filename, sep = "/")
   # Read all the files into a list
   # files <- list.files(outputDir, full.names = TRUE)
@@ -906,7 +931,7 @@ loadSelectedData <- function(data, iota_ids) {
   # Concatenate all data together into one data.frame
   dataout <- do.call(rbind, dataout)
   # add timestamp as first columns (for x in plot)
-  timing <- str_c(data$`iota id`, 
+  timing <- str_c(data$`iora id`, 
                   str_c(data$date, 
                         str_c(data$hour, 
                               data$minutes,

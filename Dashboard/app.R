@@ -1,8 +1,8 @@
-library(shinydashboard)
 library(shiny)
+library(shinydashboard)
 library(shinycssloaders)
 #library(shinyjs)
-#options(shiny.error = browser)
+options(shiny.error = browser)
 
 # load the functions from external file
 source("helpers.R")
@@ -67,7 +67,7 @@ sidebar <- dashboardSidebar(
     conditionalPanel(
       "input.sidebarmenu == 'trackProgress'",
       div(
-        selectizeInput('results_ids', label = "Choose the IOTA ids to plot", choices = c(1:10), multi = TRUE),
+        selectizeInput('results_ids', label = "Choose the IORA ids to plot", choices = c(1:10), multi = TRUE),
         actionButton("plotSelectedResults", "Plot selected results")#
       )
     )
@@ -76,7 +76,9 @@ sidebar <- dashboardSidebar(
 )
 
 # body ----
-body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
+body <- dashboardBody(
+  tags$style(".small-box {height: 20; width: 150; }"),
+                      
                       
                       # first page (datafiles) ----
                       tabItems(
@@ -101,7 +103,9 @@ body <- dashboardBody(tags$style(".small-box {height: 20; width: 150; }"),
                           # first row: iteractive plot
                             #fluidRow( # uncomment to remove spate outside the box
                               box(
+                                title = "Observed task sequences",
                                 width = NULL,
+                                collapsible = TRUE,
                                          withSpinner(
                                            plotlyOutput("interactivePlot", width = "98%")
                                          )
@@ -466,7 +470,8 @@ server <- function(input, output, session) { #
   })
   
   output$files <- renderDataTable({
-    file.info(list.files(path = "data/", full.names = TRUE)) %>% select(size, mtime:atime, uname) %>% rownames_to_column(., var = "Filename")
+    file.info(list.files(path = "data", full.names = TRUE)) %>% select(size, mtime) %>% rownames_to_column(., var = "Filename") %>% rename(time = mtime) %>% mutate(size = utils:::format.object_size(size, "auto"), day = as.Date.POSIXct(time), time = as_hms(time)) # %>% as_tibble() %>% View()
+    
     # ) #DT::datatable(
   })
   output$sessions <- renderDataTable({
